@@ -5,7 +5,7 @@ import (
 	"flag"
 	"os"
 
-	authregistrationv1 "k8s-auth-registration-lib/api/v1"
+	authregistrationv1 "github.com/cloudogu/k8s-auth-registration-lib/api/v1"
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"

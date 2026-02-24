@@ -19,7 +19,7 @@ package controller
 import (
 	"context"
 
-	authregistrationv1 "k8s-auth-registration-lib/api/v1"
+	authregistrationv1 "github.com/cloudogu/k8s-auth-registration-lib/api/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
