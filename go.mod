@@ -3,7 +3,7 @@ module github.com/cloudogu/k8s-auth-registration-operator
 go 1.25.3
 
 require (
-	github.com/cloudogu/k8s-auth-registration-lib v0.0.0-20260224080359-56f2b754abf6
+	github.com/cloudogu/k8s-auth-registration-lib v0.0.0-20260224094141-74e8bba12a66
 	k8s.io/apimachinery v0.35.1
 	k8s.io/client-go v0.35.0
 	sigs.k8s.io/controller-runtime v0.23.1
