@@ -2,10 +2,12 @@ package main
 
 import (
 	"crypto/tls"
+	"errors"
 	"flag"
 	"os"
 
 	authregistrationv1 "github.com/cloudogu/k8s-auth-registration-lib/api/v1"
+	"github.com/cloudogu/k8s-auth-registration-operator/internal/registration"
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
@@ -14,6 +16,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
@@ -22,6 +25,12 @@ import (
 
 	"github.com/cloudogu/k8s-auth-registration-operator/internal/controller"
 	// +kubebuilder:scaffold:imports
+)
+
+const (
+	casRegisteredServicesEndpointEnv = "CAS_REGISTEREDSERVICES_ENDPOINT"
+	casRegisteredServicesUsernameEnv = "CAS_REGISTEREDSERVICES_USERNAME"
+	casRegisteredServicesPasswordEnv = "CAS_REGISTEREDSERVICES_PASSWORD"
 )
 
 var (
@@ -138,10 +147,22 @@ func main() {
 		metricsServerOptions.KeyName = metricsCertKey
 	}
 
+	watchNamespace := os.Getenv("NAMESPACE")
+	if watchNamespace == "" {
+		setupLog.Error(errors.New("missing environment variable"), "Failed to resolve watch namespace", "envVar", "NAMESPACE")
+		os.Exit(1)
+	}
+	setupLog.Info("Using namespace-scoped cache", "namespace", watchNamespace)
+
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
-		Scheme:                 scheme,
-		Metrics:                metricsServerOptions,
-		WebhookServer:          webhookServer,
+		Scheme:        scheme,
+		Metrics:       metricsServerOptions,
+		WebhookServer: webhookServer,
+		Cache: cache.Options{
+			DefaultNamespaces: map[string]cache.Config{
+				watchNamespace: {},
+			},
+		},
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "ec33e801.k8s.cloudogu.com",
@@ -162,10 +183,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := (&controller.AuthRegistrationReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
+	serviceRegistrationBackend, err := resolveServiceRegistrationBackendFromEnv()
+	if err != nil {
+		setupLog.Error(err, "Failed to configure service registration backend")
+		os.Exit(1)
+	}
+
+	authRegCtrl := controller.NewAuthRegistrationReconciler(mgr.GetClient(), mgr.GetScheme(), serviceRegistrationBackend)
+
+	if err := authRegCtrl.SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "AuthRegistration")
 		os.Exit(1)
 	}
@@ -185,4 +211,22 @@ func main() {
 		setupLog.Error(err, "Failed to run manager")
 		os.Exit(1)
 	}
+}
+
+func resolveServiceRegistrationBackendFromEnv() (*registration.NoOpServiceRegistrationBackend, error) {
+
+	setupLog.Info("Using no-op service registration backend (CAS endpoint not configured)")
+
+	return &registration.NoOpServiceRegistrationBackend{}, nil
+
+	//endpoint := os.Getenv(casRegisteredServicesEndpointEnv)
+	//if endpoint == "" {
+	//}
+	//
+	//setupLog.Info("Using CAS service registration backend", "endpoint", endpoint)
+	//return cas.NewCASServiceRegistrationBackend(cas.CASServiceRegistrationBackendConfig{
+	//	Endpoint: endpoint,
+	//	Username: os.Getenv(casRegisteredServicesUsernameEnv),
+	//	Password: os.Getenv(casRegisteredServicesPasswordEnv),
+	//})
 }

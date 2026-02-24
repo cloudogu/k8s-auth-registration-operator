@@ -1,0 +1,65 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  labels:
+    {{- include "k8s-auth-registration-operator.labels" . | nindent 4 }}
+  name: {{ include "k8s-auth-registration-operator.name" . }}-controller-role
+rules:
+  - apiGroups:
+      - k8s.cloudogu.com
+    resources:
+      - authregistrations
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+  - apiGroups:
+      - k8s.cloudogu.com
+    resources:
+      - authregistrations/status
+    verbs:
+      - get
+      - update
+      - patch
+  - apiGroups:
+      - k8s.cloudogu.com
+    resources:
+      - authregistrations/finalizers
+    verbs:
+      - update
+  - apiGroups:
+      - ""
+    resources:
+      - secrets
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+  - apiGroups:
+      - ""
+    resources:
+      - events
+    verbs:
+      - create
+      - patch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  labels:
+    {{- include "k8s-auth-registration-operator.labels" . | nindent 4 }}
+  name: {{ include "k8s-auth-registration-operator.name" . }}-controller-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "k8s-auth-registration-operator.name" . }}-controller-role
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "k8s-auth-registration-operator.name" . }}-controller-manager
