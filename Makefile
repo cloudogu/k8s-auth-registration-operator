@@ -31,6 +31,9 @@ IMAGE_IMPORT_TARGET=image-import
 
 include build/make/k8s-controller.mk
 
+# Build uses cmd/main.go as entrypoint (repo has no main package in project root).
+GO_BUILD_FLAGS=-mod=vendor -a -o $(BINARY) ./cmd/main.go
+
 .PHONY: mocks
 mocks: ${MOCKERY_BIN} ${MOCKERY_YAML} ## target is used to generate mocks for all interfaces in a project.
 	${MOCKERY_BIN}
