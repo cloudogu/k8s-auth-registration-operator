@@ -15,13 +15,9 @@ type authRegistrationStatusPatcher struct {
 	Client client.Client
 }
 
-func (p *authRegistrationStatusPatcher) PatchInvalidSpec(
-	ctx context.Context,
-	authRegistration *authregistrationv1.AuthRegistration,
-	invalidSpecErr error,
-) error {
+func (p *authRegistrationStatusPatcher) PatchInvalidSpec(ctx context.Context, authRegistration *authregistrationv1.AuthRegistration, invalidSpecErr error) error {
 	if err := p.PatchResolvedSecretRef(ctx, authRegistration, ""); err != nil {
-		return err
+		return fmt.Errorf("failed to clear resolved secret reference: %w", err)
 	}
 
 	if err := p.patchCondition(ctx, authRegistration, metav1.Condition{
@@ -41,12 +37,7 @@ func (p *authRegistrationStatusPatcher) PatchInvalidSpec(
 	})
 }
 
-func (p *authRegistrationStatusPatcher) PatchSecretReconcileFailed(
-	ctx context.Context,
-	authRegistration *authregistrationv1.AuthRegistration,
-	resolvedSecretRef string,
-	secretErr error,
-) error {
+func (p *authRegistrationStatusPatcher) PatchSecretReconcileFailed(ctx context.Context, authRegistration *authregistrationv1.AuthRegistration, resolvedSecretRef string, secretErr error) error {
 	if err := p.patchCondition(ctx, authRegistration, metav1.Condition{
 		Type:    authregistrationv1.ConditionCredentialsPublished,
 		Status:  metav1.ConditionFalse,
@@ -64,10 +55,7 @@ func (p *authRegistrationStatusPatcher) PatchSecretReconcileFailed(
 	})
 }
 
-func (p *authRegistrationStatusPatcher) PatchCredentialsPublished(
-	ctx context.Context,
-	authRegistration *authregistrationv1.AuthRegistration,
-) error {
+func (p *authRegistrationStatusPatcher) PatchCredentialsPublished(ctx context.Context, authRegistration *authregistrationv1.AuthRegistration) error {
 	return p.patchCondition(ctx, authRegistration, metav1.Condition{
 		Type:    authregistrationv1.ConditionCredentialsPublished,
 		Status:  metav1.ConditionTrue,
@@ -76,11 +64,7 @@ func (p *authRegistrationStatusPatcher) PatchCredentialsPublished(
 	})
 }
 
-func (p *authRegistrationStatusPatcher) PatchRegistrationFailed(
-	ctx context.Context,
-	authRegistration *authregistrationv1.AuthRegistration,
-	registrationErr error,
-) error {
+func (p *authRegistrationStatusPatcher) PatchRegistrationFailed(ctx context.Context, authRegistration *authregistrationv1.AuthRegistration, registrationErr error) error {
 	return p.patchCondition(ctx, authRegistration, metav1.Condition{
 		Type:    authregistrationv1.ConditionCompleted,
 		Status:  metav1.ConditionFalse,
@@ -89,10 +73,7 @@ func (p *authRegistrationStatusPatcher) PatchRegistrationFailed(
 	})
 }
 
-func (p *authRegistrationStatusPatcher) PatchRegistrationSucceeded(
-	ctx context.Context,
-	authRegistration *authregistrationv1.AuthRegistration,
-) error {
+func (p *authRegistrationStatusPatcher) PatchRegistrationSucceeded(ctx context.Context, authRegistration *authregistrationv1.AuthRegistration) error {
 	return p.patchCondition(ctx, authRegistration, metav1.Condition{
 		Type:    authregistrationv1.ConditionCompleted,
 		Status:  metav1.ConditionTrue,
@@ -101,21 +82,13 @@ func (p *authRegistrationStatusPatcher) PatchRegistrationSucceeded(
 	})
 }
 
-func (p *authRegistrationStatusPatcher) PatchResolvedSecretRef(
-	ctx context.Context,
-	authRegistration *authregistrationv1.AuthRegistration,
-	resolvedSecretRef string,
-) error {
+func (p *authRegistrationStatusPatcher) PatchResolvedSecretRef(ctx context.Context, authRegistration *authregistrationv1.AuthRegistration, resolvedSecretRef string) error {
 	return p.patchStatus(ctx, authRegistration, func(status *authregistrationv1.AuthRegistrationStatus) {
 		status.ResolvedSecretRef = resolvedSecretRef
 	})
 }
 
-func (p *authRegistrationStatusPatcher) patchCondition(
-	ctx context.Context,
-	authRegistration *authregistrationv1.AuthRegistration,
-	condition metav1.Condition,
-) error {
+func (p *authRegistrationStatusPatcher) patchCondition(ctx context.Context, authRegistration *authregistrationv1.AuthRegistration, condition metav1.Condition) error {
 	if condition.Type == "" {
 		return fmt.Errorf("condition type must not be empty")
 	}
@@ -126,11 +99,7 @@ func (p *authRegistrationStatusPatcher) patchCondition(
 	})
 }
 
-func (p *authRegistrationStatusPatcher) patchStatus(
-	ctx context.Context,
-	authRegistration *authregistrationv1.AuthRegistration,
-	mutate func(status *authregistrationv1.AuthRegistrationStatus),
-) error {
+func (p *authRegistrationStatusPatcher) patchStatus(ctx context.Context, authRegistration *authregistrationv1.AuthRegistration, mutate func(status *authregistrationv1.AuthRegistrationStatus)) error {
 	authRegistrationBeforePatch := authRegistration.DeepCopy()
 	mutate(&authRegistration.Status)
 

@@ -68,11 +68,11 @@ func TestGetLogLevel(t *testing.T) {
 		wantErr assert.ErrorAssertionFunc
 	}{
 		{
-			name:    "test log level not set",
+			name:    "returns error when LOG_LEVEL is not set",
 			wantErr: assert.Error,
 		},
 		{
-			name:    "test log level set to debug",
+			name:    "returns configured value when LOG_LEVEL is set",
 			want:    "debug",
 			wantErr: assert.NoError,
 		},

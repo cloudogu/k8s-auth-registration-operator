@@ -28,21 +28,23 @@ func TestCreateTLSOptions(t *testing.T) {
 }
 
 func TestCreateWebhookServer(t *testing.T) {
-	tlsOpts := createTLSOptions(Flags{EnableHTTP2: false})
-	flagsConfig := Flags{
-		WebhookCertPath: "/tmp/webhook-certs",
-		WebhookCertName: "webhook.crt",
-		WebhookCertKey:  "webhook.key",
-	}
+	t.Run("uses provided webhook certificate settings and tls options", func(t *testing.T) {
+		tlsOpts := createTLSOptions(Flags{EnableHTTP2: false})
+		flagsConfig := Flags{
+			WebhookCertPath: "/tmp/webhook-certs",
+			WebhookCertName: "webhook.crt",
+			WebhookCertKey:  "webhook.key",
+		}
 
-	server := createWebhookServer(flagsConfig, tlsOpts)
+		server := createWebhookServer(flagsConfig, tlsOpts)
 
-	defaultServer, ok := server.(*webhook.DefaultServer)
-	require.Truef(t, ok, "expected webhook server to be *webhook.DefaultServer, got %T", server)
-	assert.Equal(t, "/tmp/webhook-certs", defaultServer.Options.CertDir)
-	assert.Equal(t, "webhook.crt", defaultServer.Options.CertName)
-	assert.Equal(t, "webhook.key", defaultServer.Options.KeyName)
-	assert.Len(t, defaultServer.Options.TLSOpts, 1)
+		defaultServer, ok := server.(*webhook.DefaultServer)
+		require.Truef(t, ok, "expected webhook server to be *webhook.DefaultServer, got %T", server)
+		assert.Equal(t, "/tmp/webhook-certs", defaultServer.Options.CertDir)
+		assert.Equal(t, "webhook.crt", defaultServer.Options.CertName)
+		assert.Equal(t, "webhook.key", defaultServer.Options.KeyName)
+		assert.Len(t, defaultServer.Options.TLSOpts, 1)
+	})
 }
 
 func TestCreateMetricsServerOptions(t *testing.T) {
@@ -83,44 +85,46 @@ func TestCreateMetricsServerOptions(t *testing.T) {
 }
 
 func TestGetControllerOptions(t *testing.T) {
-	resetFlagStateForTest(t, []string{
-		"--metrics-bind-address=:9443",
-		"--health-probe-bind-address=:18081",
-		"--leader-elect=true",
-		"--metrics-secure=false",
-		"--webhook-cert-path=/tmp/webhook-certs",
-		"--webhook-cert-name=webhook.crt",
-		"--webhook-cert-key=webhook.key",
-		"--metrics-cert-path=/tmp/metrics-certs",
-		"--metrics-cert-name=metrics.crt",
-		"--metrics-cert-key=metrics.key",
-		"--enable-http2=true",
+	t.Run("maps parsed flags and namespace into controller-runtime options", func(t *testing.T) {
+		resetFlagStateForTest(t, []string{
+			"--metrics-bind-address=:9443",
+			"--health-probe-bind-address=:18081",
+			"--leader-elect=true",
+			"--metrics-secure=false",
+			"--webhook-cert-path=/tmp/webhook-certs",
+			"--webhook-cert-name=webhook.crt",
+			"--webhook-cert-key=webhook.key",
+			"--metrics-cert-path=/tmp/metrics-certs",
+			"--metrics-cert-name=metrics.crt",
+			"--metrics-cert-key=metrics.key",
+			"--enable-http2=true",
+		})
+
+		scheme := runtime.NewScheme()
+		namespace := "ecosystem"
+
+		options := getControllerOptions(scheme, namespace)
+
+		assert.Same(t, scheme, options.Scheme)
+		assert.Equal(t, ":18081", options.HealthProbeBindAddress)
+		assert.True(t, options.LeaderElection)
+		assert.Equal(t, "ec33e801.k8s.cloudogu.com", options.LeaderElectionID)
+		_, exists := options.Cache.DefaultNamespaces[namespace]
+		assert.Truef(t, exists, "expected namespace %q to be configured in cache options", namespace)
+
+		assert.Equal(t, ":9443", options.Metrics.BindAddress)
+		assert.False(t, options.Metrics.SecureServing)
+		assert.Nil(t, options.Metrics.FilterProvider)
+		assert.Empty(t, options.Metrics.TLSOpts)
+		assert.Equal(t, "/tmp/metrics-certs", options.Metrics.CertDir)
+		assert.Equal(t, "metrics.crt", options.Metrics.CertName)
+		assert.Equal(t, "metrics.key", options.Metrics.KeyName)
+
+		webhookServer, ok := options.WebhookServer.(*webhook.DefaultServer)
+		require.Truef(t, ok, "expected WebhookServer to be *webhook.DefaultServer, got %T", options.WebhookServer)
+		assert.Equal(t, "/tmp/webhook-certs", webhookServer.Options.CertDir)
+		assert.Equal(t, "webhook.crt", webhookServer.Options.CertName)
+		assert.Equal(t, "webhook.key", webhookServer.Options.KeyName)
+		assert.Empty(t, webhookServer.Options.TLSOpts)
 	})
-
-	scheme := runtime.NewScheme()
-	namespace := "ecosystem"
-
-	options := getControllerOptions(scheme, namespace)
-
-	assert.Same(t, scheme, options.Scheme)
-	assert.Equal(t, ":18081", options.HealthProbeBindAddress)
-	assert.True(t, options.LeaderElection)
-	assert.Equal(t, "ec33e801.k8s.cloudogu.com", options.LeaderElectionID)
-	_, exists := options.Cache.DefaultNamespaces[namespace]
-	assert.Truef(t, exists, "expected namespace %q to be configured in cache options", namespace)
-
-	assert.Equal(t, ":9443", options.Metrics.BindAddress)
-	assert.False(t, options.Metrics.SecureServing)
-	assert.Nil(t, options.Metrics.FilterProvider)
-	assert.Empty(t, options.Metrics.TLSOpts)
-	assert.Equal(t, "/tmp/metrics-certs", options.Metrics.CertDir)
-	assert.Equal(t, "metrics.crt", options.Metrics.CertName)
-	assert.Equal(t, "metrics.key", options.Metrics.KeyName)
-
-	webhookServer, ok := options.WebhookServer.(*webhook.DefaultServer)
-	require.Truef(t, ok, "expected WebhookServer to be *webhook.DefaultServer, got %T", options.WebhookServer)
-	assert.Equal(t, "/tmp/webhook-certs", webhookServer.Options.CertDir)
-	assert.Equal(t, "webhook.crt", webhookServer.Options.CertName)
-	assert.Equal(t, "webhook.key", webhookServer.Options.KeyName)
-	assert.Empty(t, webhookServer.Options.TLSOpts)
 }

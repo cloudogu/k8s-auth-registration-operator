@@ -11,23 +11,28 @@ import (
 )
 
 func TestConfigureLogger(t *testing.T) {
-	originalSetLogger := ctrl.SetLogger
-	defer func() {
-		ctrl.SetLogger = originalSetLogger
-	}()
-	t.Setenv(logLevelEnvVar, "debug")
-	Stage = StageDevelopment
+	t.Run("configures controller-runtime logger with computed zap options", func(t *testing.T) {
+		originalSetLogger := ctrl.SetLogger
+		oldStage := Stage
+		defer func() {
+			ctrl.SetLogger = originalSetLogger
+			Stage = oldStage
+		}()
 
-	ctrl.SetLogger = func(l logr.Logger) {
-		require.NotNil(t, l)
-		assert.NotNil(t, l.GetSink())
-	}
+		t.Setenv(logLevelEnvVar, "debug")
+		Stage = StageDevelopment
 
-	ConfigureLogger()
+		ctrl.SetLogger = func(l logr.Logger) {
+			require.NotNil(t, l)
+			assert.NotNil(t, l.GetSink())
+		}
+
+		ConfigureLogger()
+	})
 }
 
 func Test_getZapOptions(t *testing.T) {
-	t.Run("should configure devMode and level", func(t *testing.T) {
+	t.Run("returns debug level and development mode when configured", func(t *testing.T) {
 		t.Setenv(logLevelEnvVar, "debug")
 		Stage = StageDevelopment
 
@@ -37,7 +42,7 @@ func Test_getZapOptions(t *testing.T) {
 		assert.True(t, options.Development)
 	})
 
-	t.Run("should use default level when not configured", func(t *testing.T) {
+	t.Run("returns info level in production when LOG_LEVEL is not set", func(t *testing.T) {
 		err := os.Unsetenv(logLevelEnvVar)
 		require.NoError(t, err)
 		Stage = StageProduction
@@ -48,7 +53,7 @@ func Test_getZapOptions(t *testing.T) {
 		assert.False(t, options.Development)
 	})
 
-	t.Run("should use default level when invalid", func(t *testing.T) {
+	t.Run("returns info level when configured log level is invalid", func(t *testing.T) {
 		t.Setenv(logLevelEnvVar, "invalid")
 		Stage = StageDevelopment
 
