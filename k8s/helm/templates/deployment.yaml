@@ -4,7 +4,7 @@ metadata:
   labels:
     control-plane: controller-manager
   {{- include "k8s-auth-registration-operator.labels" . | nindent 4 }}
-  name: {{ include "k8s-auth-registration-operator.name" . }}-controller-manager
+  name: {{ include "k8s-auth-registration-operator.name" . }}
 spec:
   replicas: {{ .Values.manager.replicas | default 1 }}
   selector:
@@ -72,5 +72,5 @@ spec:
         runAsNonRoot: true
         seccompProfile:
           type: RuntimeDefault
-      serviceAccountName: {{ include "k8s-auth-registration-operator.name" . }}-controller-manager
+      serviceAccountName: {{ include "k8s-auth-registration-operator.name" . }}
       terminationGracePeriodSeconds: 10

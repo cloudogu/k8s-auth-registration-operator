@@ -15,6 +15,6 @@ manager:
     memory: 128M
   resourceRequests:
     cpu: 50m
-    memory: 127M
+    memory: 128M
   networkPolicies:
     enabled: true
