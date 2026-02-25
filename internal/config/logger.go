@@ -3,10 +3,19 @@ package config
 import (
 	"fmt"
 
+	"github.com/go-logr/logr"
 	uberzap "go.uber.org/zap"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 )
+
+// used for mocks
+
+//nolint:unused
+//goland:noinspection GoUnusedType
+type logSink interface {
+	logr.LogSink
+}
 
 func ConfigureLogger() {
 	zapOpts := getZapOptions()

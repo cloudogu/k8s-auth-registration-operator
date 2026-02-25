@@ -23,7 +23,7 @@ func IsStageDevelopment() bool {
 	return Stage == StageDevelopment
 }
 
-// OperatorConfig contains all configurable values for the blueprint operator.
+// OperatorConfig contains all configurable values for the operator.
 type OperatorConfig struct {
 	// Namespace specifies the namespace that the operator is deployed to.
 	Namespace string
@@ -39,7 +39,7 @@ func NewOperatorConfig(scheme *runtime.Scheme) (*OperatorConfig, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to read namespace: %w", err)
 	}
-	log.Info(fmt.Sprintf("Deploying the k8s dogu operator in namespace %s", namespace))
+	log.Info(fmt.Sprintf("Deploying the k8s-auth-registration-operator in namespace %s", namespace))
 
 	ctrlOptions := getControllerOptions(scheme, namespace)
 
