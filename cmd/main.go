@@ -1,8 +1,13 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	authregistrationv1 "github.com/cloudogu/k8s-auth-registration-lib/api/v1"
 	"github.com/cloudogu/k8s-auth-registration-operator/internal/config"
@@ -21,9 +26,7 @@ import (
 )
 
 const (
-	casRegisteredServicesEndpointEnv = "CAS_REGISTEREDSERVICES_ENDPOINT"
-	casRegisteredServicesUsernameEnv = "CAS_REGISTEREDSERVICES_USERNAME"
-	casRegisteredServicesPasswordEnv = "CAS_REGISTEREDSERVICES_PASSWORD"
+	gracefulShutdownTimeout = 15 * time.Second
 )
 
 var (
@@ -38,7 +41,6 @@ func init() {
 	// +kubebuilder:scaffold:scheme
 }
 
-// nolint:gocyclo
 func main() {
 	config.ConfigureLogger()
 
@@ -55,10 +57,8 @@ func main() {
 }
 
 func startManager(cfg *config.OperatorConfig) error {
-	serviceRegistrationBackend, err := resolveServiceRegistrationBackendFromEnv()
-	if err != nil {
-		return fmt.Errorf("failed to configure service registration backend: %w", err)
-	}
+	//TODO replace with real cas backend
+	serviceRegistrationBackend := &registration.NoOpServiceRegistrationBackend{}
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), cfg.ControllerOptions)
 	if err != nil {
@@ -79,17 +79,45 @@ func startManager(cfg *config.OperatorConfig) error {
 		return fmt.Errorf("failed to set up ready check: %w", err)
 	}
 
-	setupLog.Info("Starting manager")
-	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
-		return fmt.Errorf("failed to startManager manager: %w", err)
-	}
-
-	return nil
+	return startManagerWithGracefulShutdown(mgr)
 }
 
-func resolveServiceRegistrationBackendFromEnv() (*registration.NoOpServiceRegistrationBackend, error) {
-	// FIXME use cas service registration backend
-	setupLog.Info("Using no-op service registration backend (CAS endpoint not configured)")
+func startManagerWithGracefulShutdown(mgr ctrl.Manager) error {
+	signalCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
-	return &registration.NoOpServiceRegistrationBackend{}, nil
+	managerCtx, cancelManager := context.WithCancel(context.Background())
+	defer cancelManager()
+
+	managerErrCh := make(chan error, 1)
+	go func() {
+		managerErrCh <- mgr.Start(managerCtx)
+	}()
+
+	setupLog.Info("Starting manager")
+
+	select {
+	case err := <-managerErrCh:
+		if err != nil {
+			return fmt.Errorf("failed to run manager: %w", err)
+		}
+		return nil
+	case <-signalCtx.Done():
+		setupLog.Info("Shutdown signal received. Stopping manager gracefully.")
+		cancelManager()
+	}
+
+	shutdownTimer := time.NewTimer(gracefulShutdownTimeout)
+	defer shutdownTimer.Stop()
+
+	select {
+	case err := <-managerErrCh:
+		if err != nil && !errors.Is(err, context.Canceled) {
+			return fmt.Errorf("manager stopped with an error during shutdown: %w", err)
+		}
+		setupLog.Info("Manager stopped gracefully")
+		return nil
+	case <-shutdownTimer.C:
+		return fmt.Errorf("graceful shutdown timed out after %s", gracefulShutdownTimeout)
+	}
 }

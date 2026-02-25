@@ -6,7 +6,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
-	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
@@ -14,7 +13,6 @@ import (
 
 func getControllerOptions(scheme *runtime.Scheme, namespace string) ctrl.Options {
 	flagsConfig := parseFlags()
-	configureLogger(flagsConfig)
 
 	tlsOpts := createTLSOptions(flagsConfig)
 	webhookServer := createWebhookServer(flagsConfig, tlsOpts)
@@ -44,10 +42,6 @@ func getControllerOptions(scheme *runtime.Scheme, namespace string) ctrl.Options
 		// after the manager stops then its usage might be unsafe.
 		// LeaderElectionReleaseOnCancel: true,
 	}
-}
-
-func configureLogger(flagsConfig Flags) {
-	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&flagsConfig.ZapOptions)))
 }
 
 func createTLSOptions(flagsConfig Flags) []func(*tls.Config) {
