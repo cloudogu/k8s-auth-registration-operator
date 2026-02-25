@@ -98,3 +98,69 @@ func TestGetLogLevel(t *testing.T) {
 		})
 	}
 }
+
+func TestConfigureStage(t *testing.T) {
+	t.Run("should set stage to development and log development warning", func(t *testing.T) {
+		t.Setenv(StageEnvVar, StageDevelopment)
+
+		oldStage := Stage
+		oldLog := log
+		defer func() {
+			Stage = oldStage
+			log = oldLog
+		}()
+
+		logMock := newMockLogSink(t)
+		logMock.EXPECT().Init(mock.Anything).Return()
+		logMock.EXPECT().Enabled(mock.Anything).Return(true).Maybe()
+		logMock.EXPECT().Info(0, "Starting in development mode! This is not recommended for production!").Return()
+		log = logr.New(logMock)
+
+		configureStage()
+
+		assert.Equal(t, StageDevelopment, Stage)
+	})
+
+	t.Run("should set stage to production when configured as production", func(t *testing.T) {
+		t.Setenv(StageEnvVar, StageProduction)
+
+		oldStage := Stage
+		oldLog := log
+		defer func() {
+			Stage = oldStage
+			log = oldLog
+		}()
+
+		logMock := newMockLogSink(t)
+		logMock.EXPECT().Init(mock.Anything).Return()
+		logMock.EXPECT().Enabled(mock.Anything).Return(true).Maybe()
+		log = logr.New(logMock)
+
+		configureStage()
+
+		assert.Equal(t, StageProduction, Stage)
+	})
+
+	t.Run("should fall back to production and log error when stage env is missing", func(t *testing.T) {
+		t.Setenv(StageEnvVar, "")
+		err := os.Unsetenv(StageEnvVar)
+		require.NoError(t, err)
+
+		oldStage := Stage
+		oldLog := log
+		defer func() {
+			Stage = oldStage
+			log = oldLog
+		}()
+
+		logMock := newMockLogSink(t)
+		logMock.EXPECT().Init(mock.Anything).Return()
+		logMock.EXPECT().Enabled(mock.Anything).Return(true).Maybe()
+		logMock.EXPECT().Error(mock.Anything, "Error reading stage environment variable. Use stage production").Return()
+		log = logr.New(logMock)
+
+		configureStage()
+
+		assert.Equal(t, StageProduction, Stage)
+	})
+}

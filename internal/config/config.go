@@ -54,6 +54,7 @@ func configureStage() {
 	Stage, err = getEnvVar(StageEnvVar)
 	if err != nil {
 		log.Error(err, "Error reading stage environment variable. Use stage production")
+		Stage = StageProduction
 	}
 
 	if IsStageDevelopment() {
