@@ -56,16 +56,16 @@ type AuthRegistrationReconciler struct {
 	serviceRegistrationBackend  serviceRegistrationBackend
 }
 
-func NewAuthRegistrationReconciler(client client.Client, scheme *runtime.Scheme, backend serviceRegistrationBackend) *AuthRegistrationReconciler {
+func NewAuthRegistrationReconciler(rtClient client.Client, scheme *runtime.Scheme, backend serviceRegistrationBackend) *AuthRegistrationReconciler {
 	return &AuthRegistrationReconciler{
-		Client: client,
+		Client: rtClient,
 		Scheme: scheme,
 		credentialsSecretReconciler: &authRegistrationSecretReconciler{
-			Client: client,
+			Client: rtClient,
 			Scheme: scheme,
 		},
 		statusPatcher: &authRegistrationStatusPatcher{
-			Client: client,
+			Client: rtClient,
 		},
 		serviceRegistrationBackend: backend,
 	}

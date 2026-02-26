@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"maps"
 
 	authregistrationv1 "github.com/cloudogu/k8s-auth-registration-lib/api/v1"
 	"github.com/cloudogu/k8s-auth-registration-operator/internal/domain"
@@ -18,7 +19,6 @@ import (
 const (
 	authRegistrationNameLabelKey = "k8s.cloudogu.com/auth-registration"
 	generatedSecretAnnotationKey = "k8s.cloudogu.com/generated-secret"
-	secretDataKeyProtocol        = "protocol"
 )
 
 type authRegistrationSecretReconciler struct {
@@ -58,23 +58,17 @@ func (r *authRegistrationSecretReconciler) Reconcile(
 	if currentSecret.Labels == nil {
 		currentSecret.Labels = map[string]string{}
 	}
-	for key, value := range desiredSecret.Labels {
-		currentSecret.Labels[key] = value
-	}
+	maps.Copy(currentSecret.Labels, desiredSecret.Labels)
 
 	if currentSecret.Annotations == nil {
 		currentSecret.Annotations = map[string]string{}
 	}
-	for key, value := range desiredSecret.Annotations {
-		currentSecret.Annotations[key] = value
-	}
+	maps.Copy(currentSecret.Annotations, desiredSecret.Annotations)
 
 	if currentSecret.Data == nil {
 		currentSecret.Data = map[string][]byte{}
 	}
-	for key, value := range desiredSecret.Data {
-		currentSecret.Data[key] = value
-	}
+	maps.Copy(currentSecret.Data, desiredSecret.Data)
 
 	if isControllerManagedSecret {
 		if ownerReferenceErr := controllerutil.SetControllerReference(authRegistration, &currentSecret, r.Scheme); ownerReferenceErr != nil {
@@ -99,15 +93,11 @@ func buildDesiredSecret(result domain.RegistrationResult, authRegistration *auth
 			},
 		},
 		Type: corev1.SecretTypeOpaque,
-		Data: map[string][]byte{
-			secretDataKeyProtocol: []byte(authRegistration.Spec.Protocol),
-		},
+		Data: map[string][]byte{},
 	}
 
 	// add secret data from registration-result
-	for key, value := range result.GetSecretData() {
-		secret.Data[key] = value
-	}
+	maps.Copy(secret.Data, result.GetSecretData())
 
 	if controllerManagedSecret {
 		secret.Annotations = map[string]string{

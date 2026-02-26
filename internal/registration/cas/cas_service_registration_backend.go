@@ -14,12 +14,8 @@ func NewCASServiceRegistrationBackend() (*CASServiceRegistrationBackend, error) 
 
 func (b *CASServiceRegistrationBackend) Upsert(_ context.Context, _ domain.Registration) (domain.RegistrationResult, error) {
 	panic("not implemented")
-
-	return domain.RegistrationResult{}, nil
 }
 
 func (b *CASServiceRegistrationBackend) Delete(_ context.Context, _ domain.Registration) error {
 	panic("not implemented")
-
-	return nil
 }

@@ -33,7 +33,6 @@ func TestBuildDesiredSecret(t *testing.T) {
 		assert.Equal(t, "ecosystem", secret.Namespace)
 		assert.Equal(t, corev1.SecretTypeOpaque, secret.Type)
 		assert.Equal(t, "my-auth-registration", secret.Labels[authRegistrationNameLabelKey])
-		assert.Equal(t, []byte(authregistrationv1.AuthProtocolOAuth), secret.Data[secretDataKeyProtocol])
 		assert.Equal(t, []byte("oidc-client-id"), secret.Data["clientId"])
 		assert.Equal(t, []byte("oidc-client-secret"), secret.Data["clientSecret"])
 		assert.Equal(t, []byte("https://issuer.example"), secret.Data["issuerUrl"])
@@ -72,7 +71,6 @@ func TestAuthRegistrationSecretReconciler_Reconcile_CreatePaths(t *testing.T) {
 		secret := getSecretFromClientForTest(t, c, types.NamespacedName{Name: "target-secret", Namespace: "ecosystem"})
 		assert.Empty(t, secret.OwnerReferences)
 		assert.NotContains(t, secret.Annotations, generatedSecretAnnotationKey)
-		assert.Equal(t, []byte(authregistrationv1.AuthProtocolOIDC), secret.Data[secretDataKeyProtocol])
 		assert.Equal(t, []byte("oidc-client-id"), secret.Data["clientId"])
 	})
 
@@ -193,7 +191,6 @@ func TestAuthRegistrationSecretReconciler_Reconcile_UpdatePaths(t *testing.T) {
 		assert.Equal(t, []byte("oidc-client-id"), secret.Data["clientId"])
 		assert.Equal(t, []byte("oidc-client-secret"), secret.Data["clientSecret"])
 		assert.Equal(t, []byte("https://issuer.example"), secret.Data["issuerUrl"])
-		assert.Equal(t, []byte(authregistrationv1.AuthProtocolOIDC), secret.Data[secretDataKeyProtocol])
 	})
 
 	t.Run("initializes nil label, annotation and data maps during update", func(t *testing.T) {
@@ -222,7 +219,6 @@ func TestAuthRegistrationSecretReconciler_Reconcile_UpdatePaths(t *testing.T) {
 		require.NotNil(t, secret.Data)
 		assert.Equal(t, "auth-reg", secret.Labels[authRegistrationNameLabelKey])
 		assert.Equal(t, []byte("oidc-client-id"), secret.Data["clientId"])
-		assert.Equal(t, []byte(authregistrationv1.AuthProtocolOIDC), secret.Data[secretDataKeyProtocol])
 	})
 
 	t.Run("does not issue update when existing secret already matches desired state", func(t *testing.T) {
