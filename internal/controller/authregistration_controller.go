@@ -108,7 +108,7 @@ func (r *AuthRegistrationReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return reconcile.Result{}, err
 	}
 
-	logger.V(1).Info("AuthRegistration reconciled successfully")
+	logger.Info("AuthRegistration reconciled successfully")
 	return reconcile.Result{}, nil
 }
 

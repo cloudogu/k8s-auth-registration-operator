@@ -33,3 +33,4 @@ go.work
 vendor
 target
 local-test
+.env
