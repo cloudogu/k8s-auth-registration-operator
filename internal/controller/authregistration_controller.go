@@ -8,7 +8,11 @@ import (
 	authregistrationv1 "github.com/cloudogu/k8s-auth-registration-lib/api/v1"
 	"github.com/cloudogu/k8s-auth-registration-operator/internal/domain"
 	"github.com/go-logr/logr"
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -131,6 +135,8 @@ func (r *AuthRegistrationReconciler) handleReconcile(ctx context.Context, authRe
 		return fmt.Errorf("failed to resolve secret reference: %w", err)
 	}
 
+	previouslyResolvedSecretName := authRegistration.Status.ResolvedSecretRef
+
 	if err := r.statusPatcher.PatchResolvedSecretRef(ctx, authRegistration, resolvedSecretName); err != nil {
 		return fmt.Errorf("failed to patch status.resolvedSecretName: %w", err)
 	}
@@ -143,6 +149,10 @@ func (r *AuthRegistrationReconciler) handleReconcile(ctx context.Context, authRe
 		return fmt.Errorf("failed to reconcile secret: %w", err)
 	}
 
+	if err := r.cleanupObsoleteGeneratedSecret(ctx, authRegistration, previouslyResolvedSecretName, resolvedSecretName); err != nil {
+		return fmt.Errorf("failed to cleanup obsolete generated secret: %w", err)
+	}
+
 	if err := r.statusPatcher.PatchCredentialsPublished(ctx, authRegistration); err != nil {
 		return fmt.Errorf("failed to patch condition: %w", err)
 	}
@@ -152,6 +162,49 @@ func (r *AuthRegistrationReconciler) handleReconcile(ctx context.Context, authRe
 	}
 
 	return nil
+}
+
+func (r *AuthRegistrationReconciler) cleanupObsoleteGeneratedSecret(ctx context.Context, authRegistration *authregistrationv1.AuthRegistration, previouslyResolvedSecretName string, resolvedSecretName string) error {
+	previouslyResolvedSecretName = strings.TrimSpace(previouslyResolvedSecretName)
+	if previouslyResolvedSecretName == "" || previouslyResolvedSecretName == resolvedSecretName {
+		return nil
+	}
+
+	previousSecretKey := types.NamespacedName{
+		Name:      previouslyResolvedSecretName,
+		Namespace: authRegistration.Namespace,
+	}
+
+	var previousSecret corev1.Secret
+	if err := r.Get(ctx, previousSecretKey, &previousSecret); err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+
+		return fmt.Errorf("failed to get previous secret %q: %w", previouslyResolvedSecretName, err)
+	}
+
+	if !isControllerGeneratedSecret(&previousSecret, authRegistration) {
+		return nil
+	}
+
+	if err := r.Delete(ctx, &previousSecret); err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+
+		return fmt.Errorf("failed to delete previous secret %q: %w", previouslyResolvedSecretName, err)
+	}
+
+	return nil
+}
+
+func isControllerGeneratedSecret(secret *corev1.Secret, authRegistration *authregistrationv1.AuthRegistration) bool {
+	if secret.Annotations == nil || secret.Annotations[generatedSecretAnnotationKey] != "true" {
+		return false
+	}
+
+	return metav1.IsControlledBy(secret, authRegistration)
 }
 
 func (r *AuthRegistrationReconciler) handleDeletion(ctx context.Context, authRegistration *authregistrationv1.AuthRegistration, logger logr.Logger) (ctrl.Result, error) {

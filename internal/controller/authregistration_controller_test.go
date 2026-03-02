@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -146,6 +147,151 @@ func TestAuthRegistrationReconciler_HandleReconcile(t *testing.T) {
 		err := reconciler.handleReconcile(context.Background(), authRegistration, logr.Discard())
 
 		require.NoError(t, err)
+	})
+
+	t.Run("deletes previously resolved generated secret when switching to explicit secretRef", func(t *testing.T) {
+		mockServiceRegistrationBackend := newMockServiceRegistrationBackend(t)
+		mockStatusPatcher := newMockStatusPatcher(t)
+		mockSecretReconciler := newMockSecretReconciler(t)
+		authRegistration := newAuthRegistrationForControllerTest("ecosystem", "auth-reg")
+		authRegistration.Status.ResolvedSecretRef = "auth-reg-credentials"
+		authRegistration.Spec.SecretRef = stringPtrForControllerTest("custom-secret")
+		previousGeneratedSecret := newGeneratedSecretForControllerTest(authRegistration, "auth-reg-credentials")
+		key := types.NamespacedName{Name: previousGeneratedSecret.Name, Namespace: previousGeneratedSecret.Namespace}
+		reconciler, c := newAuthRegistrationControllerReconcilerForTest(
+			t,
+			nil,
+			mockServiceRegistrationBackend,
+			mockStatusPatcher,
+			mockSecretReconciler,
+			previousGeneratedSecret,
+		)
+		registrationResult := newOIDCRegistrationResultForControllerTest()
+
+		mockServiceRegistrationBackend.EXPECT().
+			Upsert(mock.Anything, matchRegistration(domain.FromAuthRegistration(authRegistration))).
+			Return(registrationResult, nil).
+			Once()
+		mockStatusPatcher.EXPECT().
+			PatchResolvedSecretRef(mock.Anything, authRegistration, "custom-secret").
+			Return(nil).
+			Once()
+		mockSecretReconciler.EXPECT().
+			Reconcile(mock.Anything, registrationResult, authRegistration, "custom-secret", false).
+			Return(nil).
+			Once()
+		mockStatusPatcher.EXPECT().
+			PatchCredentialsPublished(mock.Anything, authRegistration).
+			Return(nil).
+			Once()
+		mockStatusPatcher.EXPECT().
+			PatchRegistrationSucceeded(mock.Anything, authRegistration).
+			Return(nil).
+			Once()
+
+		err := reconciler.handleReconcile(context.Background(), authRegistration, logr.Discard())
+
+		require.NoError(t, err)
+		deletedSecret := &corev1.Secret{}
+		getErr := c.Get(context.Background(), key, deletedSecret)
+		assert.True(t, apierrors.IsNotFound(getErr))
+	})
+
+	t.Run("keeps previously resolved secret when it is not controller-generated", func(t *testing.T) {
+		mockServiceRegistrationBackend := newMockServiceRegistrationBackend(t)
+		mockStatusPatcher := newMockStatusPatcher(t)
+		mockSecretReconciler := newMockSecretReconciler(t)
+		authRegistration := newAuthRegistrationForControllerTest("ecosystem", "auth-reg")
+		authRegistration.Status.ResolvedSecretRef = "existing-user-secret"
+		authRegistration.Spec.SecretRef = stringPtrForControllerTest("custom-secret")
+		previousUnmanagedSecret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "existing-user-secret",
+				Namespace: "ecosystem",
+			},
+		}
+		key := types.NamespacedName{Name: previousUnmanagedSecret.Name, Namespace: previousUnmanagedSecret.Namespace}
+		reconciler, c := newAuthRegistrationControllerReconcilerForTest(
+			t,
+			nil,
+			mockServiceRegistrationBackend,
+			mockStatusPatcher,
+			mockSecretReconciler,
+			previousUnmanagedSecret,
+		)
+		registrationResult := newOIDCRegistrationResultForControllerTest()
+
+		mockServiceRegistrationBackend.EXPECT().
+			Upsert(mock.Anything, matchRegistration(domain.FromAuthRegistration(authRegistration))).
+			Return(registrationResult, nil).
+			Once()
+		mockStatusPatcher.EXPECT().
+			PatchResolvedSecretRef(mock.Anything, authRegistration, "custom-secret").
+			Return(nil).
+			Once()
+		mockSecretReconciler.EXPECT().
+			Reconcile(mock.Anything, registrationResult, authRegistration, "custom-secret", false).
+			Return(nil).
+			Once()
+		mockStatusPatcher.EXPECT().
+			PatchCredentialsPublished(mock.Anything, authRegistration).
+			Return(nil).
+			Once()
+		mockStatusPatcher.EXPECT().
+			PatchRegistrationSucceeded(mock.Anything, authRegistration).
+			Return(nil).
+			Once()
+
+		err := reconciler.handleReconcile(context.Background(), authRegistration, logr.Discard())
+
+		require.NoError(t, err)
+		remainingSecret := &corev1.Secret{}
+		require.NoError(t, c.Get(context.Background(), key, remainingSecret))
+	})
+
+	t.Run("returns wrapped error when deleting obsolete generated secret fails", func(t *testing.T) {
+		mockServiceRegistrationBackend := newMockServiceRegistrationBackend(t)
+		mockStatusPatcher := newMockStatusPatcher(t)
+		mockSecretReconciler := newMockSecretReconciler(t)
+		recorder := &authRegistrationControllerClientRecorder{
+			deleteErr: errors.New("delete failed"),
+		}
+		authRegistration := newAuthRegistrationForControllerTest("ecosystem", "auth-reg")
+		authRegistration.Status.ResolvedSecretRef = "auth-reg-credentials"
+		authRegistration.Spec.SecretRef = stringPtrForControllerTest("custom-secret")
+		previousGeneratedSecret := newGeneratedSecretForControllerTest(authRegistration, "auth-reg-credentials")
+		reconciler, c := newAuthRegistrationControllerReconcilerForTest(
+			t,
+			recorder,
+			mockServiceRegistrationBackend,
+			mockStatusPatcher,
+			mockSecretReconciler,
+			previousGeneratedSecret,
+		)
+		registrationResult := newOIDCRegistrationResultForControllerTest()
+
+		mockServiceRegistrationBackend.EXPECT().
+			Upsert(mock.Anything, matchRegistration(domain.FromAuthRegistration(authRegistration))).
+			Return(registrationResult, nil).
+			Once()
+		mockStatusPatcher.EXPECT().
+			PatchResolvedSecretRef(mock.Anything, authRegistration, "custom-secret").
+			Return(nil).
+			Once()
+		mockSecretReconciler.EXPECT().
+			Reconcile(mock.Anything, registrationResult, authRegistration, "custom-secret", false).
+			Return(nil).
+			Once()
+
+		err := reconciler.handleReconcile(context.Background(), authRegistration, logr.Discard())
+
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "failed to cleanup obsolete generated secret")
+		assert.ErrorContains(t, err, "delete failed")
+
+		remainingSecret := &corev1.Secret{}
+		key := types.NamespacedName{Name: previousGeneratedSecret.Name, Namespace: previousGeneratedSecret.Namespace}
+		require.NoError(t, c.Get(context.Background(), key, remainingSecret))
 	})
 
 	t.Run("returns wrapped error and patches registration failed when backend upsert fails", func(t *testing.T) {
@@ -723,6 +869,7 @@ func newAuthRegistrationControllerReconcilerForTest(
 		WithInterceptorFuncs(interceptor.Funcs{
 			Get:    recorder.interceptGet,
 			Update: recorder.interceptUpdate,
+			Delete: recorder.interceptDelete,
 		})
 
 	client := builder.Build()
@@ -741,6 +888,7 @@ func newAuthRegistrationControllerSchemeForTest(t *testing.T) *runtime.Scheme {
 	t.Helper()
 
 	scheme := runtime.NewScheme()
+	require.NoError(t, corev1.AddToScheme(scheme))
 	require.NoError(t, authregistrationv1.AddToScheme(scheme))
 
 	return scheme
@@ -751,6 +899,7 @@ func newAuthRegistrationForControllerTest(namespace, name string) *authregistrat
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
+			UID:       types.UID(name + "-uid"),
 		},
 		Spec: authregistrationv1.AuthRegistrationSpec{
 			Protocol: authregistrationv1.AuthProtocolOIDC,
@@ -815,9 +964,11 @@ func matchAuthRegistration(namespace, name string) interface{} {
 type authRegistrationControllerClientRecorder struct {
 	getCalls    int
 	updateCalls int
+	deleteCalls int
 
 	getErr    error
 	updateErr error
+	deleteErr error
 }
 
 func (r *authRegistrationControllerClientRecorder) interceptGet(
@@ -849,4 +1000,45 @@ func (r *authRegistrationControllerClientRecorder) interceptUpdate(
 	}
 
 	return c.Update(ctx, obj, opts...)
+}
+
+func (r *authRegistrationControllerClientRecorder) interceptDelete(
+	ctx context.Context,
+	c ctrlclient.WithWatch,
+	obj ctrlclient.Object,
+	opts ...ctrlclient.DeleteOption,
+) error {
+	r.deleteCalls++
+
+	if r.deleteErr != nil {
+		return r.deleteErr
+	}
+
+	return c.Delete(ctx, obj, opts...)
+}
+
+func newGeneratedSecretForControllerTest(authRegistration *authregistrationv1.AuthRegistration, secretName string) *corev1.Secret {
+	return &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      secretName,
+			Namespace: authRegistration.Namespace,
+			Annotations: map[string]string{
+				generatedSecretAnnotationKey: "true",
+			},
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion: authregistrationv1.GroupVersion.String(),
+					Kind:       "AuthRegistration",
+					Name:       authRegistration.Name,
+					UID:        authRegistration.UID,
+					Controller: boolPtrForControllerTest(true),
+				},
+			},
+		},
+		Type: corev1.SecretTypeOpaque,
+	}
+}
+
+func boolPtrForControllerTest(value bool) *bool {
+	return &value
 }
