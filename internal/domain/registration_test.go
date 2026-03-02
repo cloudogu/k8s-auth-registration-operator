@@ -72,6 +72,36 @@ func TestRegistrationResult_GetSecretData(t *testing.T) {
 
 		assert.Empty(t, secretData)
 	})
+
+	t.Run("should return empty map for CAS protocol without CAS payload", func(t *testing.T) {
+		result := RegistrationResult{
+			Protocol: ProtocolCAS,
+		}
+
+		secretData := result.GetSecretData()
+
+		assert.Empty(t, secretData)
+	})
+
+	t.Run("should return empty map for OIDC protocol without OIDC payload", func(t *testing.T) {
+		result := RegistrationResult{
+			Protocol: ProtocolOIDC,
+		}
+
+		secretData := result.GetSecretData()
+
+		assert.Empty(t, secretData)
+	})
+
+	t.Run("should return empty map for OAuth protocol without OAuth payload", func(t *testing.T) {
+		result := RegistrationResult{
+			Protocol: ProtocolOAuth,
+		}
+
+		secretData := result.GetSecretData()
+
+		assert.Empty(t, secretData)
+	})
 }
 
 func TestFromAuthRegistration(t *testing.T) {

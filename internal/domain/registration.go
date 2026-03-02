@@ -48,11 +48,11 @@ type RegistrationResult struct {
 }
 
 func (rr RegistrationResult) GetSecretData() map[string][]byte {
-	if rr.Protocol == ProtocolCAS {
+	if rr.Protocol == ProtocolCAS && rr.CAS != nil {
 		return map[string][]byte{"serviceId": []byte(rr.CAS.ServiceID)}
 	}
 
-	if rr.Protocol == ProtocolOIDC {
+	if rr.Protocol == ProtocolOIDC && rr.OIDC != nil {
 		return map[string][]byte{
 			"clientId":     []byte(rr.OIDC.ClientID),
 			"clientSecret": []byte(rr.OIDC.ClientSecret),
@@ -60,7 +60,7 @@ func (rr RegistrationResult) GetSecretData() map[string][]byte {
 		}
 	}
 
-	if rr.Protocol == ProtocolOAuth {
+	if rr.Protocol == ProtocolOAuth && rr.OAuth != nil {
 		return map[string][]byte{
 			"clientId":     []byte(rr.OAuth.ClientID),
 			"clientSecret": []byte(rr.OAuth.ClientSecret),
