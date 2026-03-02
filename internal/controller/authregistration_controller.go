@@ -224,7 +224,7 @@ func (r *AuthRegistrationReconciler) handleDeletion(ctx context.Context, authReg
 		return reconcile.Result{}, err
 	}
 
-	logger.V(1).Info("AuthRegistration was deleted and backend registration removed")
+	logger.Info("AuthRegistration was deleted and backend registration removed")
 	return reconcile.Result{}, nil
 }
 
