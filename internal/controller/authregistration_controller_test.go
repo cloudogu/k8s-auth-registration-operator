@@ -4,18 +4,15 @@ import (
 	"context"
 	"errors"
 	"reflect"
-	"strings"
 	"testing"
 	"time"
 
 	authregistrationv1 "github.com/cloudogu/k8s-auth-registration-lib/api/v1"
 	"github.com/cloudogu/k8s-auth-registration-operator/internal/domain"
-	"github.com/go-logr/logr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -60,636 +57,192 @@ func TestResolveSecretName(t *testing.T) {
 	})
 }
 
-func TestNewAuthRegistrationReconciler(t *testing.T) {
+func TestIndexAuthRegistrationBySecretName(t *testing.T) {
+	t.Run("indexes generated secret name when spec.secretRef is nil", func(t *testing.T) {
+		authRegistration := newAuthRegistrationForControllerTest("ecosystem", "auth-reg")
+
+		indexValues := indexAuthRegistrationBySecretName(authRegistration)
+
+		assert.Equal(t, []string{"auth-reg" + defaultGeneratedSecretSuffix}, indexValues)
+	})
+
+	t.Run("indexes trimmed explicit secretRef", func(t *testing.T) {
+		authRegistration := newAuthRegistrationForControllerTest("ecosystem", "auth-reg")
+		authRegistration.Spec.SecretRef = stringPtrForControllerTest("  target-secret  ")
+
+		indexValues := indexAuthRegistrationBySecretName(authRegistration)
+
+		assert.Equal(t, []string{"target-secret"}, indexValues)
+	})
+
+	t.Run("returns nil for invalid empty secretRef", func(t *testing.T) {
+		authRegistration := newAuthRegistrationForControllerTest("ecosystem", "auth-reg")
+		authRegistration.Spec.SecretRef = stringPtrForControllerTest("  \n\t ")
+
+		indexValues := indexAuthRegistrationBySecretName(authRegistration)
+
+		assert.Nil(t, indexValues)
+	})
+
+	t.Run("returns nil for non authregistration objects", func(t *testing.T) {
+		indexValues := indexAuthRegistrationBySecretName(&corev1.Secret{})
+
+		assert.Nil(t, indexValues)
+	})
+}
+
+func TestAuthRegistrationReconciler_MapSecretToAuthRegistrations(t *testing.T) {
+	scheme := newAuthRegistrationControllerSchemeForTest(t)
+	defaultRefAuthRegistration := newAuthRegistrationForControllerTest("ecosystem", "default-auth-reg")
+	explicitRefAuthRegistration := newAuthRegistrationForControllerTest("ecosystem", "explicit-auth-reg")
+	explicitRefAuthRegistration.Spec.SecretRef = stringPtrForControllerTest("shared-secret")
+	otherRefAuthRegistration := newAuthRegistrationForControllerTest("ecosystem", "other-auth-reg")
+	otherRefAuthRegistration.Spec.SecretRef = stringPtrForControllerTest("other-secret")
+	otherNamespaceAuthRegistration := newAuthRegistrationForControllerTest("other", "other-namespace-auth-reg")
+	otherNamespaceAuthRegistration.Spec.SecretRef = stringPtrForControllerTest("shared-secret")
+
+	client := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(
+			defaultRefAuthRegistration,
+			explicitRefAuthRegistration,
+			otherRefAuthRegistration,
+			otherNamespaceAuthRegistration,
+		).
+		WithIndex(&authregistrationv1.AuthRegistration{}, authRegistrationSecretRefField, indexAuthRegistrationBySecretName).
+		Build()
+
+	reconciler := &AuthRegistrationController{
+		Client: client,
+	}
+
+	t.Run("maps explicit secretRef to matching auth registration in same namespace", func(t *testing.T) {
+		requests := reconciler.mapSecretToAuthRegistrations(context.Background(), &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: "ecosystem",
+				Name:      "shared-secret",
+			},
+		})
+
+		assert.ElementsMatch(t, []ctrl.Request{
+			{
+				NamespacedName: types.NamespacedName{
+					Namespace: "ecosystem",
+					Name:      "explicit-auth-reg",
+				},
+			},
+		}, requests)
+	})
+
+	t.Run("maps generated secret name to matching auth registration", func(t *testing.T) {
+		requests := reconciler.mapSecretToAuthRegistrations(context.Background(), &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: "ecosystem",
+				Name:      "default-auth-reg" + defaultGeneratedSecretSuffix,
+			},
+		})
+
+		assert.ElementsMatch(t, []ctrl.Request{
+			{
+				NamespacedName: types.NamespacedName{
+					Namespace: "ecosystem",
+					Name:      "default-auth-reg",
+				},
+			},
+		}, requests)
+	})
+
+	t.Run("returns no requests for unrelated secret", func(t *testing.T) {
+		requests := reconciler.mapSecretToAuthRegistrations(context.Background(), &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: "ecosystem",
+				Name:      "unknown-secret",
+			},
+		})
+
+		assert.Empty(t, requests)
+	})
+
+	t.Run("returns no requests when watched object is not a secret", func(t *testing.T) {
+		requests := reconciler.mapSecretToAuthRegistrations(context.Background(), defaultRefAuthRegistration)
+
+		assert.Empty(t, requests)
+	})
+
+	t.Run("returns no requests when listing authregistrations fails", func(t *testing.T) {
+		listErr := errors.New("list failed")
+		clientWithListError := fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithObjects(
+				defaultRefAuthRegistration,
+				explicitRefAuthRegistration,
+				otherRefAuthRegistration,
+				otherNamespaceAuthRegistration,
+			).
+			WithIndex(&authregistrationv1.AuthRegistration{}, authRegistrationSecretRefField, indexAuthRegistrationBySecretName).
+			WithInterceptorFuncs(interceptor.Funcs{
+				List: func(ctx context.Context, c ctrlclient.WithWatch, list ctrlclient.ObjectList, opts ...ctrlclient.ListOption) error {
+					return listErr
+				},
+			}).
+			Build()
+
+		controllerWithListError := &AuthRegistrationController{
+			Client: clientWithListError,
+		}
+
+		requests := controllerWithListError.mapSecretToAuthRegistrations(context.Background(), &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: "ecosystem",
+				Name:      "shared-secret",
+			},
+		})
+
+		assert.Empty(t, requests)
+	})
+}
+
+func TestNewAuthRegistrationController(t *testing.T) {
 	t.Run("constructs reconciler with default collaborators and provided backend", func(t *testing.T) {
 		scheme := newAuthRegistrationControllerSchemeForTest(t)
 		client := fake.NewClientBuilder().WithScheme(scheme).Build()
 		mockServiceRegistrationBackend := newMockServiceRegistrationBackend(t)
 
-		reconciler := NewAuthRegistrationReconciler(client, scheme, mockServiceRegistrationBackend)
+		reconciler := NewAuthRegistrationController(client, scheme, mockServiceRegistrationBackend)
+		defaultReconciler, hasDefaultReconciler := reconciler.reconciler.(*defaultAuthRegistrationReconciler)
 
 		require.NotNil(t, reconciler)
 		assert.Same(t, client, reconciler.Client)
-		assert.Same(t, scheme, reconciler.Scheme)
-		assert.Same(t, mockServiceRegistrationBackend, reconciler.serviceRegistrationBackend)
-		_, hasDefaultSecretReconciler := reconciler.credentialsSecretReconciler.(*authRegistrationSecretReconciler)
-		_, hasDefaultStatusPatcher := reconciler.statusPatcher.(*authRegistrationStatusPatcher)
+		assert.True(t, hasDefaultReconciler)
+		assert.Same(t, mockServiceRegistrationBackend, defaultReconciler.serviceRegistrationBackend)
+		_, hasDefaultSecretReconciler := defaultReconciler.credentialsSecretReconciler.(*authRegistrationSecretReconciler)
+		_, hasDefaultStatusPatcher := defaultReconciler.statusPatcher.(*authRegistrationStatusPatcher)
 		assert.True(t, hasDefaultSecretReconciler)
 		assert.True(t, hasDefaultStatusPatcher)
 	})
 }
 
-func TestAuthRegistrationReconciler_HandleReconcile(t *testing.T) {
-	t.Run("reconciles successfully with generated controller-managed secret", func(t *testing.T) {
-		mockServiceRegistrationBackend := newMockServiceRegistrationBackend(t)
-		mockStatusPatcher := newMockStatusPatcher(t)
-		mockSecretReconciler := newMockSecretReconciler(t)
-		reconciler, _ := newAuthRegistrationControllerReconcilerForTest(t, nil, mockServiceRegistrationBackend, mockStatusPatcher, mockSecretReconciler)
-		authRegistration := newAuthRegistrationForControllerTest("ecosystem", "auth-reg")
-		registrationResult := newOIDCRegistrationResultForControllerTest()
-
-		mockServiceRegistrationBackend.EXPECT().
-			Upsert(mock.Anything, matchRegistration(domain.FromAuthRegistration(authRegistration))).
-			Return(registrationResult, nil).
-			Once()
-		mockStatusPatcher.EXPECT().
-			PatchResolvedSecretRef(mock.Anything, authRegistration, "auth-reg"+defaultGeneratedSecretSuffix).
-			Return(nil).
-			Once()
-		mockSecretReconciler.EXPECT().
-			Reconcile(mock.Anything, registrationResult, authRegistration, "auth-reg"+defaultGeneratedSecretSuffix, true).
-			Return(nil).
-			Once()
-		mockStatusPatcher.EXPECT().
-			PatchCredentialsPublished(mock.Anything, authRegistration).
-			Return(nil).
-			Once()
-		mockStatusPatcher.EXPECT().
-			PatchRegistrationSucceeded(mock.Anything, authRegistration).
-			Return(nil).
-			Once()
-
-		err := reconciler.handleReconcile(context.Background(), authRegistration, logr.Discard())
-
-		require.NoError(t, err)
-	})
-
-	t.Run("reconciles successfully with explicit unmanaged secret ref", func(t *testing.T) {
-		mockServiceRegistrationBackend := newMockServiceRegistrationBackend(t)
-		mockStatusPatcher := newMockStatusPatcher(t)
-		mockSecretReconciler := newMockSecretReconciler(t)
-		reconciler, _ := newAuthRegistrationControllerReconcilerForTest(t, nil, mockServiceRegistrationBackend, mockStatusPatcher, mockSecretReconciler)
-		authRegistration := newAuthRegistrationForControllerTest("ecosystem", "auth-reg")
-		authRegistration.Spec.SecretRef = stringPtrForControllerTest("  given-secret  ")
-		registrationResult := newOIDCRegistrationResultForControllerTest()
-
-		mockServiceRegistrationBackend.EXPECT().
-			Upsert(mock.Anything, matchRegistration(domain.FromAuthRegistration(authRegistration))).
-			Return(registrationResult, nil).
-			Once()
-		mockStatusPatcher.EXPECT().
-			PatchResolvedSecretRef(mock.Anything, authRegistration, "given-secret").
-			Return(nil).
-			Once()
-		mockSecretReconciler.EXPECT().
-			Reconcile(mock.Anything, registrationResult, authRegistration, "given-secret", false).
-			Return(nil).
-			Once()
-		mockStatusPatcher.EXPECT().
-			PatchCredentialsPublished(mock.Anything, authRegistration).
-			Return(nil).
-			Once()
-		mockStatusPatcher.EXPECT().
-			PatchRegistrationSucceeded(mock.Anything, authRegistration).
-			Return(nil).
-			Once()
-
-		err := reconciler.handleReconcile(context.Background(), authRegistration, logr.Discard())
-
-		require.NoError(t, err)
-	})
-
-	t.Run("deletes previously resolved generated secret when switching to explicit secretRef", func(t *testing.T) {
-		mockServiceRegistrationBackend := newMockServiceRegistrationBackend(t)
-		mockStatusPatcher := newMockStatusPatcher(t)
-		mockSecretReconciler := newMockSecretReconciler(t)
-		authRegistration := newAuthRegistrationForControllerTest("ecosystem", "auth-reg")
-		authRegistration.Status.ResolvedSecretRef = "auth-reg-credentials"
-		authRegistration.Spec.SecretRef = stringPtrForControllerTest("custom-secret")
-		previousGeneratedSecret := newGeneratedSecretForControllerTest(authRegistration, "auth-reg-credentials")
-		key := types.NamespacedName{Name: previousGeneratedSecret.Name, Namespace: previousGeneratedSecret.Namespace}
-		reconciler, c := newAuthRegistrationControllerReconcilerForTest(
-			t,
-			nil,
-			mockServiceRegistrationBackend,
-			mockStatusPatcher,
-			mockSecretReconciler,
-			previousGeneratedSecret,
-		)
-		registrationResult := newOIDCRegistrationResultForControllerTest()
-
-		mockServiceRegistrationBackend.EXPECT().
-			Upsert(mock.Anything, matchRegistration(domain.FromAuthRegistration(authRegistration))).
-			Return(registrationResult, nil).
-			Once()
-		mockStatusPatcher.EXPECT().
-			PatchResolvedSecretRef(mock.Anything, authRegistration, "custom-secret").
-			Return(nil).
-			Once()
-		mockSecretReconciler.EXPECT().
-			Reconcile(mock.Anything, registrationResult, authRegistration, "custom-secret", false).
-			Return(nil).
-			Once()
-		mockStatusPatcher.EXPECT().
-			PatchCredentialsPublished(mock.Anything, authRegistration).
-			Return(nil).
-			Once()
-		mockStatusPatcher.EXPECT().
-			PatchRegistrationSucceeded(mock.Anything, authRegistration).
-			Return(nil).
-			Once()
-
-		err := reconciler.handleReconcile(context.Background(), authRegistration, logr.Discard())
-
-		require.NoError(t, err)
-		deletedSecret := &corev1.Secret{}
-		getErr := c.Get(context.Background(), key, deletedSecret)
-		assert.True(t, apierrors.IsNotFound(getErr))
-	})
-
-	t.Run("keeps previously resolved secret when it is not controller-generated", func(t *testing.T) {
-		mockServiceRegistrationBackend := newMockServiceRegistrationBackend(t)
-		mockStatusPatcher := newMockStatusPatcher(t)
-		mockSecretReconciler := newMockSecretReconciler(t)
-		authRegistration := newAuthRegistrationForControllerTest("ecosystem", "auth-reg")
-		authRegistration.Status.ResolvedSecretRef = "existing-user-secret"
-		authRegistration.Spec.SecretRef = stringPtrForControllerTest("custom-secret")
-		previousUnmanagedSecret := &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "existing-user-secret",
-				Namespace: "ecosystem",
-			},
-		}
-		key := types.NamespacedName{Name: previousUnmanagedSecret.Name, Namespace: previousUnmanagedSecret.Namespace}
-		reconciler, c := newAuthRegistrationControllerReconcilerForTest(
-			t,
-			nil,
-			mockServiceRegistrationBackend,
-			mockStatusPatcher,
-			mockSecretReconciler,
-			previousUnmanagedSecret,
-		)
-		registrationResult := newOIDCRegistrationResultForControllerTest()
-
-		mockServiceRegistrationBackend.EXPECT().
-			Upsert(mock.Anything, matchRegistration(domain.FromAuthRegistration(authRegistration))).
-			Return(registrationResult, nil).
-			Once()
-		mockStatusPatcher.EXPECT().
-			PatchResolvedSecretRef(mock.Anything, authRegistration, "custom-secret").
-			Return(nil).
-			Once()
-		mockSecretReconciler.EXPECT().
-			Reconcile(mock.Anything, registrationResult, authRegistration, "custom-secret", false).
-			Return(nil).
-			Once()
-		mockStatusPatcher.EXPECT().
-			PatchCredentialsPublished(mock.Anything, authRegistration).
-			Return(nil).
-			Once()
-		mockStatusPatcher.EXPECT().
-			PatchRegistrationSucceeded(mock.Anything, authRegistration).
-			Return(nil).
-			Once()
-
-		err := reconciler.handleReconcile(context.Background(), authRegistration, logr.Discard())
-
-		require.NoError(t, err)
-		remainingSecret := &corev1.Secret{}
-		require.NoError(t, c.Get(context.Background(), key, remainingSecret))
-	})
-
-	t.Run("returns wrapped error when deleting obsolete generated secret fails", func(t *testing.T) {
-		mockServiceRegistrationBackend := newMockServiceRegistrationBackend(t)
-		mockStatusPatcher := newMockStatusPatcher(t)
-		mockSecretReconciler := newMockSecretReconciler(t)
-		recorder := &authRegistrationControllerClientRecorder{
-			deleteErr: errors.New("delete failed"),
-		}
-		authRegistration := newAuthRegistrationForControllerTest("ecosystem", "auth-reg")
-		authRegistration.Status.ResolvedSecretRef = "auth-reg-credentials"
-		authRegistration.Spec.SecretRef = stringPtrForControllerTest("custom-secret")
-		previousGeneratedSecret := newGeneratedSecretForControllerTest(authRegistration, "auth-reg-credentials")
-		reconciler, c := newAuthRegistrationControllerReconcilerForTest(
-			t,
-			recorder,
-			mockServiceRegistrationBackend,
-			mockStatusPatcher,
-			mockSecretReconciler,
-			previousGeneratedSecret,
-		)
-		registrationResult := newOIDCRegistrationResultForControllerTest()
-
-		mockServiceRegistrationBackend.EXPECT().
-			Upsert(mock.Anything, matchRegistration(domain.FromAuthRegistration(authRegistration))).
-			Return(registrationResult, nil).
-			Once()
-		mockStatusPatcher.EXPECT().
-			PatchResolvedSecretRef(mock.Anything, authRegistration, "custom-secret").
-			Return(nil).
-			Once()
-		mockSecretReconciler.EXPECT().
-			Reconcile(mock.Anything, registrationResult, authRegistration, "custom-secret", false).
-			Return(nil).
-			Once()
-
-		err := reconciler.handleReconcile(context.Background(), authRegistration, logr.Discard())
-
-		require.Error(t, err)
-		assert.ErrorContains(t, err, "failed to cleanup obsolete generated secret")
-		assert.ErrorContains(t, err, "delete failed")
-
-		remainingSecret := &corev1.Secret{}
-		key := types.NamespacedName{Name: previousGeneratedSecret.Name, Namespace: previousGeneratedSecret.Namespace}
-		require.NoError(t, c.Get(context.Background(), key, remainingSecret))
-	})
-
-	t.Run("returns wrapped error and patches registration failed when backend upsert fails", func(t *testing.T) {
-		mockServiceRegistrationBackend := newMockServiceRegistrationBackend(t)
-		mockStatusPatcher := newMockStatusPatcher(t)
-		mockSecretReconciler := newMockSecretReconciler(t)
-		reconciler, _ := newAuthRegistrationControllerReconcilerForTest(t, nil, mockServiceRegistrationBackend, mockStatusPatcher, mockSecretReconciler)
-		authRegistration := newAuthRegistrationForControllerTest("ecosystem", "auth-reg")
-		upsertErr := errors.New("backend unavailable")
-
-		mockServiceRegistrationBackend.EXPECT().
-			Upsert(mock.Anything, matchRegistration(domain.FromAuthRegistration(authRegistration))).
-			Return(domain.RegistrationResult{}, upsertErr).
-			Once()
-		mockStatusPatcher.EXPECT().
-			PatchRegistrationFailed(mock.Anything, authRegistration, upsertErr).
-			Return(nil).
-			Once()
-
-		err := reconciler.handleReconcile(context.Background(), authRegistration, logr.Discard())
-
-		require.Error(t, err)
-		assert.ErrorContains(t, err, "failed to upsert service-registration")
-		assert.ErrorContains(t, err, "backend unavailable")
-	})
-
-	t.Run("returns original upsert error even when patching registration failed status also fails", func(t *testing.T) {
-		mockServiceRegistrationBackend := newMockServiceRegistrationBackend(t)
-		mockStatusPatcher := newMockStatusPatcher(t)
-		mockSecretReconciler := newMockSecretReconciler(t)
-		reconciler, _ := newAuthRegistrationControllerReconcilerForTest(t, nil, mockServiceRegistrationBackend, mockStatusPatcher, mockSecretReconciler)
-		authRegistration := newAuthRegistrationForControllerTest("ecosystem", "auth-reg")
-		upsertErr := errors.New("backend unavailable")
-		patchErr := errors.New("status patch failed")
-
-		mockServiceRegistrationBackend.EXPECT().
-			Upsert(mock.Anything, matchRegistration(domain.FromAuthRegistration(authRegistration))).
-			Return(domain.RegistrationResult{}, upsertErr).
-			Once()
-		mockStatusPatcher.EXPECT().
-			PatchRegistrationFailed(mock.Anything, authRegistration, upsertErr).
-			Return(patchErr).
-			Once()
-
-		err := reconciler.handleReconcile(context.Background(), authRegistration, logr.Discard())
-
-		require.Error(t, err)
-		assert.ErrorContains(t, err, "failed to upsert service-registration")
-		assert.ErrorContains(t, err, "backend unavailable")
-		assert.NotContains(t, err.Error(), "status patch failed")
-	})
-
-	t.Run("returns wrapped error and patches invalid spec when secret reference is empty", func(t *testing.T) {
-		mockServiceRegistrationBackend := newMockServiceRegistrationBackend(t)
-		mockStatusPatcher := newMockStatusPatcher(t)
-		mockSecretReconciler := newMockSecretReconciler(t)
-		reconciler, _ := newAuthRegistrationControllerReconcilerForTest(t, nil, mockServiceRegistrationBackend, mockStatusPatcher, mockSecretReconciler)
-		authRegistration := newAuthRegistrationForControllerTest("ecosystem", "auth-reg")
-		authRegistration.Spec.SecretRef = stringPtrForControllerTest("   ")
-		registrationResult := newOIDCRegistrationResultForControllerTest()
-
-		mockServiceRegistrationBackend.EXPECT().
-			Upsert(mock.Anything, matchRegistration(domain.FromAuthRegistration(authRegistration))).
-			Return(registrationResult, nil).
-			Once()
-		mockStatusPatcher.EXPECT().
-			PatchInvalidSpec(mock.Anything, authRegistration, mock.MatchedBy(func(err error) bool {
-				return err != nil && strings.Contains(err.Error(), "spec.secretRef must not be empty")
-			})).
-			Return(nil).
-			Once()
-
-		err := reconciler.handleReconcile(context.Background(), authRegistration, logr.Discard())
-
-		require.Error(t, err)
-		assert.ErrorContains(t, err, "failed to resolve secret reference")
-		assert.ErrorContains(t, err, "spec.secretRef must not be empty")
-	})
-
-	t.Run("returns original resolve-secret error even when invalid-spec patching fails", func(t *testing.T) {
-		mockServiceRegistrationBackend := newMockServiceRegistrationBackend(t)
-		mockStatusPatcher := newMockStatusPatcher(t)
-		mockSecretReconciler := newMockSecretReconciler(t)
-		reconciler, _ := newAuthRegistrationControllerReconcilerForTest(t, nil, mockServiceRegistrationBackend, mockStatusPatcher, mockSecretReconciler)
-		authRegistration := newAuthRegistrationForControllerTest("ecosystem", "auth-reg")
-		authRegistration.Spec.SecretRef = stringPtrForControllerTest("  ")
-		registrationResult := newOIDCRegistrationResultForControllerTest()
-
-		mockServiceRegistrationBackend.EXPECT().
-			Upsert(mock.Anything, matchRegistration(domain.FromAuthRegistration(authRegistration))).
-			Return(registrationResult, nil).
-			Once()
-		mockStatusPatcher.EXPECT().
-			PatchInvalidSpec(mock.Anything, authRegistration, mock.Anything).
-			Return(errors.New("status patch failed")).
-			Once()
-
-		err := reconciler.handleReconcile(context.Background(), authRegistration, logr.Discard())
-
-		require.Error(t, err)
-		assert.ErrorContains(t, err, "failed to resolve secret reference")
-		assert.ErrorContains(t, err, "spec.secretRef must not be empty")
-		assert.NotContains(t, err.Error(), "status patch failed")
-	})
-
-	t.Run("returns wrapped error when patching resolved secret reference fails", func(t *testing.T) {
-		mockServiceRegistrationBackend := newMockServiceRegistrationBackend(t)
-		mockStatusPatcher := newMockStatusPatcher(t)
-		mockSecretReconciler := newMockSecretReconciler(t)
-		reconciler, _ := newAuthRegistrationControllerReconcilerForTest(t, nil, mockServiceRegistrationBackend, mockStatusPatcher, mockSecretReconciler)
-		authRegistration := newAuthRegistrationForControllerTest("ecosystem", "auth-reg")
-		registrationResult := newOIDCRegistrationResultForControllerTest()
-
-		mockServiceRegistrationBackend.EXPECT().
-			Upsert(mock.Anything, matchRegistration(domain.FromAuthRegistration(authRegistration))).
-			Return(registrationResult, nil).
-			Once()
-		mockStatusPatcher.EXPECT().
-			PatchResolvedSecretRef(mock.Anything, authRegistration, "auth-reg"+defaultGeneratedSecretSuffix).
-			Return(errors.New("status patch failed")).
-			Once()
-
-		err := reconciler.handleReconcile(context.Background(), authRegistration, logr.Discard())
-
-		require.Error(t, err)
-		assert.ErrorContains(t, err, "failed to patch status.resolvedSecretName")
-		assert.ErrorContains(t, err, "status patch failed")
-	})
-
-	t.Run("returns wrapped error and patches secret-reconcile failure when secret reconcile fails", func(t *testing.T) {
-		mockServiceRegistrationBackend := newMockServiceRegistrationBackend(t)
-		mockStatusPatcher := newMockStatusPatcher(t)
-		mockSecretReconciler := newMockSecretReconciler(t)
-		reconciler, _ := newAuthRegistrationControllerReconcilerForTest(t, nil, mockServiceRegistrationBackend, mockStatusPatcher, mockSecretReconciler)
-		authRegistration := newAuthRegistrationForControllerTest("ecosystem", "auth-reg")
-		registrationResult := newOIDCRegistrationResultForControllerTest()
-		secretErr := errors.New("secret reconcile failed")
-
-		mockServiceRegistrationBackend.EXPECT().
-			Upsert(mock.Anything, matchRegistration(domain.FromAuthRegistration(authRegistration))).
-			Return(registrationResult, nil).
-			Once()
-		mockStatusPatcher.EXPECT().
-			PatchResolvedSecretRef(mock.Anything, authRegistration, "auth-reg"+defaultGeneratedSecretSuffix).
-			Return(nil).
-			Once()
-		mockSecretReconciler.EXPECT().
-			Reconcile(mock.Anything, registrationResult, authRegistration, "auth-reg"+defaultGeneratedSecretSuffix, true).
-			Return(secretErr).
-			Once()
-		mockStatusPatcher.EXPECT().
-			PatchSecretReconcileFailed(
-				mock.Anything,
-				authRegistration,
-				"auth-reg"+defaultGeneratedSecretSuffix,
-				secretErr,
-			).
-			Return(nil).
-			Once()
-
-		err := reconciler.handleReconcile(context.Background(), authRegistration, logr.Discard())
-
-		require.Error(t, err)
-		assert.ErrorContains(t, err, "failed to reconcile secret")
-		assert.ErrorContains(t, err, "secret reconcile failed")
-	})
-
-	t.Run("returns original secret reconcile error even when secret failure status patch fails", func(t *testing.T) {
-		mockServiceRegistrationBackend := newMockServiceRegistrationBackend(t)
-		mockStatusPatcher := newMockStatusPatcher(t)
-		mockSecretReconciler := newMockSecretReconciler(t)
-		reconciler, _ := newAuthRegistrationControllerReconcilerForTest(t, nil, mockServiceRegistrationBackend, mockStatusPatcher, mockSecretReconciler)
-		authRegistration := newAuthRegistrationForControllerTest("ecosystem", "auth-reg")
-		registrationResult := newOIDCRegistrationResultForControllerTest()
-		secretErr := errors.New("secret reconcile failed")
-
-		mockServiceRegistrationBackend.EXPECT().
-			Upsert(mock.Anything, matchRegistration(domain.FromAuthRegistration(authRegistration))).
-			Return(registrationResult, nil).
-			Once()
-		mockStatusPatcher.EXPECT().
-			PatchResolvedSecretRef(mock.Anything, authRegistration, "auth-reg"+defaultGeneratedSecretSuffix).
-			Return(nil).
-			Once()
-		mockSecretReconciler.EXPECT().
-			Reconcile(mock.Anything, registrationResult, authRegistration, "auth-reg"+defaultGeneratedSecretSuffix, true).
-			Return(secretErr).
-			Once()
-		mockStatusPatcher.EXPECT().
-			PatchSecretReconcileFailed(
-				mock.Anything,
-				authRegistration,
-				"auth-reg"+defaultGeneratedSecretSuffix,
-				secretErr,
-			).
-			Return(errors.New("status patch failed")).
-			Once()
-
-		err := reconciler.handleReconcile(context.Background(), authRegistration, logr.Discard())
-
-		require.Error(t, err)
-		assert.ErrorContains(t, err, "failed to reconcile secret")
-		assert.ErrorContains(t, err, "secret reconcile failed")
-		assert.NotContains(t, err.Error(), "status patch failed")
-	})
-
-	t.Run("returns wrapped error when patching credentials-published condition fails", func(t *testing.T) {
-		mockServiceRegistrationBackend := newMockServiceRegistrationBackend(t)
-		mockStatusPatcher := newMockStatusPatcher(t)
-		mockSecretReconciler := newMockSecretReconciler(t)
-		reconciler, _ := newAuthRegistrationControllerReconcilerForTest(t, nil, mockServiceRegistrationBackend, mockStatusPatcher, mockSecretReconciler)
-		authRegistration := newAuthRegistrationForControllerTest("ecosystem", "auth-reg")
-		registrationResult := newOIDCRegistrationResultForControllerTest()
-
-		mockServiceRegistrationBackend.EXPECT().
-			Upsert(mock.Anything, matchRegistration(domain.FromAuthRegistration(authRegistration))).
-			Return(registrationResult, nil).
-			Once()
-		mockStatusPatcher.EXPECT().
-			PatchResolvedSecretRef(mock.Anything, authRegistration, "auth-reg"+defaultGeneratedSecretSuffix).
-			Return(nil).
-			Once()
-		mockSecretReconciler.EXPECT().
-			Reconcile(mock.Anything, registrationResult, authRegistration, "auth-reg"+defaultGeneratedSecretSuffix, true).
-			Return(nil).
-			Once()
-		mockStatusPatcher.EXPECT().
-			PatchCredentialsPublished(mock.Anything, authRegistration).
-			Return(errors.New("status patch failed")).
-			Once()
-
-		err := reconciler.handleReconcile(context.Background(), authRegistration, logr.Discard())
-
-		require.Error(t, err)
-		assert.ErrorContains(t, err, "failed to patch condition")
-		assert.ErrorContains(t, err, "status patch failed")
-	})
-
-	t.Run("returns wrapped error when patching registration-succeeded condition fails", func(t *testing.T) {
-		mockServiceRegistrationBackend := newMockServiceRegistrationBackend(t)
-		mockStatusPatcher := newMockStatusPatcher(t)
-		mockSecretReconciler := newMockSecretReconciler(t)
-		reconciler, _ := newAuthRegistrationControllerReconcilerForTest(t, nil, mockServiceRegistrationBackend, mockStatusPatcher, mockSecretReconciler)
-		authRegistration := newAuthRegistrationForControllerTest("ecosystem", "auth-reg")
-		registrationResult := newOIDCRegistrationResultForControllerTest()
-
-		mockServiceRegistrationBackend.EXPECT().
-			Upsert(mock.Anything, matchRegistration(domain.FromAuthRegistration(authRegistration))).
-			Return(registrationResult, nil).
-			Once()
-		mockStatusPatcher.EXPECT().
-			PatchResolvedSecretRef(mock.Anything, authRegistration, "auth-reg"+defaultGeneratedSecretSuffix).
-			Return(nil).
-			Once()
-		mockSecretReconciler.EXPECT().
-			Reconcile(mock.Anything, registrationResult, authRegistration, "auth-reg"+defaultGeneratedSecretSuffix, true).
-			Return(nil).
-			Once()
-		mockStatusPatcher.EXPECT().
-			PatchCredentialsPublished(mock.Anything, authRegistration).
-			Return(nil).
-			Once()
-		mockStatusPatcher.EXPECT().
-			PatchRegistrationSucceeded(mock.Anything, authRegistration).
-			Return(errors.New("status patch failed")).
-			Once()
-
-		err := reconciler.handleReconcile(context.Background(), authRegistration, logr.Discard())
-
-		require.Error(t, err)
-		assert.ErrorContains(t, err, "failed to patch condition")
-		assert.ErrorContains(t, err, "status patch failed")
-	})
-}
-
-func TestAuthRegistrationReconciler_HandleDeletion(t *testing.T) {
-	t.Run("returns without backend interaction when finalizer is missing", func(t *testing.T) {
-		mockServiceRegistrationBackend := newMockServiceRegistrationBackend(t)
-		mockStatusPatcher := newMockStatusPatcher(t)
-		mockSecretReconciler := newMockSecretReconciler(t)
-		reconciler, _ := newAuthRegistrationControllerReconcilerForTest(t, nil, mockServiceRegistrationBackend, mockStatusPatcher, mockSecretReconciler)
-		authRegistration := newAuthRegistrationForControllerTest("ecosystem", "auth-reg")
-
-		result, err := reconciler.handleDeletion(context.Background(), authRegistration, logr.Discard())
-
-		require.NoError(t, err)
-		assert.Equal(t, ctrl.Result{}, result)
-		assert.False(t, containsFinalizer(authRegistration, authRegistrationFinalizer))
-	})
-
-	t.Run("returns backend delete error when finalizer exists", func(t *testing.T) {
-		mockServiceRegistrationBackend := newMockServiceRegistrationBackend(t)
-		mockStatusPatcher := newMockStatusPatcher(t)
-		mockSecretReconciler := newMockSecretReconciler(t)
-		reconciler, _ := newAuthRegistrationControllerReconcilerForTest(t, nil, mockServiceRegistrationBackend, mockStatusPatcher, mockSecretReconciler)
-		authRegistration := newAuthRegistrationForControllerTest("ecosystem", "auth-reg")
-		authRegistration.Finalizers = []string{authRegistrationFinalizer}
-		deleteErr := errors.New("delete failed")
-
-		mockServiceRegistrationBackend.EXPECT().
-			Delete(mock.Anything, matchRegistration(domain.FromAuthRegistration(authRegistration))).
-			Return(deleteErr).
-			Once()
-
-		result, err := reconciler.handleDeletion(context.Background(), authRegistration, logr.Discard())
-
-		require.Error(t, err)
-		assert.EqualError(t, err, "delete failed")
-		assert.Equal(t, ctrl.Result{}, result)
-		assert.True(t, containsFinalizer(authRegistration, authRegistrationFinalizer))
-	})
-
-	t.Run("removes finalizer and updates resource when backend delete succeeds", func(t *testing.T) {
-		mockServiceRegistrationBackend := newMockServiceRegistrationBackend(t)
-		mockStatusPatcher := newMockStatusPatcher(t)
-		mockSecretReconciler := newMockSecretReconciler(t)
-		authRegistration := newAuthRegistrationForControllerTest("ecosystem", "auth-reg")
-		authRegistration.Finalizers = []string{authRegistrationFinalizer}
-		key := types.NamespacedName{Name: authRegistration.Name, Namespace: authRegistration.Namespace}
-		reconciler, c := newAuthRegistrationControllerReconcilerForTest(t, nil, mockServiceRegistrationBackend, mockStatusPatcher, mockSecretReconciler, authRegistration)
-		stored := getAuthRegistrationFromClientForControllerTest(t, c, key)
-
-		mockServiceRegistrationBackend.EXPECT().
-			Delete(mock.Anything, matchRegistration(domain.FromAuthRegistration(stored))).
-			Return(nil).
-			Once()
-
-		result, err := reconciler.handleDeletion(context.Background(), stored, logr.Discard())
-
-		require.NoError(t, err)
-		assert.Equal(t, ctrl.Result{}, result)
-		assert.False(t, containsFinalizer(stored, authRegistrationFinalizer))
-
-		updated := getAuthRegistrationFromClientForControllerTest(t, c, key)
-		assert.False(t, containsFinalizer(updated, authRegistrationFinalizer))
-	})
-
-	t.Run("returns update error when finalizer removal cannot be persisted", func(t *testing.T) {
-		mockServiceRegistrationBackend := newMockServiceRegistrationBackend(t)
-		mockStatusPatcher := newMockStatusPatcher(t)
-		mockSecretReconciler := newMockSecretReconciler(t)
-		recorder := &authRegistrationControllerClientRecorder{
-			updateErr: errors.New("update failed"),
-		}
-		authRegistration := newAuthRegistrationForControllerTest("ecosystem", "auth-reg")
-		authRegistration.Finalizers = []string{authRegistrationFinalizer}
-		key := types.NamespacedName{Name: authRegistration.Name, Namespace: authRegistration.Namespace}
-		reconciler, c := newAuthRegistrationControllerReconcilerForTest(
-			t,
-			recorder,
-			mockServiceRegistrationBackend,
-			mockStatusPatcher,
-			mockSecretReconciler,
-			authRegistration,
-		)
-		stored := getAuthRegistrationFromClientForControllerTest(t, c, key)
-
-		mockServiceRegistrationBackend.EXPECT().
-			Delete(mock.Anything, matchRegistration(domain.FromAuthRegistration(stored))).
-			Return(nil).
-			Once()
-
-		result, err := reconciler.handleDeletion(context.Background(), stored, logr.Discard())
-
-		require.Error(t, err)
-		assert.EqualError(t, err, "update failed")
-		assert.Equal(t, ctrl.Result{}, result)
-
-		updated := getAuthRegistrationFromClientForControllerTest(t, c, key)
-		assert.True(t, containsFinalizer(updated, authRegistrationFinalizer))
-	})
-}
-
-func TestAuthRegistrationReconciler_Reconcile(t *testing.T) {
+func TestAuthRegistrationController_Reconcile(t *testing.T) {
 	t.Run("returns nil when resource is not found", func(t *testing.T) {
-		mockServiceRegistrationBackend := newMockServiceRegistrationBackend(t)
-		mockStatusPatcher := newMockStatusPatcher(t)
-		mockSecretReconciler := newMockSecretReconciler(t)
-		reconciler, _ := newAuthRegistrationControllerReconcilerForTest(t, nil, mockServiceRegistrationBackend, mockStatusPatcher, mockSecretReconciler)
+		mockAuthReconciler := newMockAuthRegistrationReconciler(t)
+		controller, _ := newAuthRegistrationControllerForTest(t, nil, mockAuthReconciler)
 		request := ctrl.Request{NamespacedName: types.NamespacedName{Name: "auth-reg", Namespace: "ecosystem"}}
 
-		result, err := reconciler.Reconcile(context.Background(), request)
+		result, err := controller.Reconcile(context.Background(), request)
 
 		require.NoError(t, err)
 		assert.Equal(t, ctrl.Result{}, result)
 	})
 
 	t.Run("returns non-notfound get errors", func(t *testing.T) {
-		mockServiceRegistrationBackend := newMockServiceRegistrationBackend(t)
-		mockStatusPatcher := newMockStatusPatcher(t)
-		mockSecretReconciler := newMockSecretReconciler(t)
+		mockAuthReconciler := newMockAuthRegistrationReconciler(t)
 		recorder := &authRegistrationControllerClientRecorder{
 			getErr: errors.New("get failed"),
 		}
-		reconciler, _ := newAuthRegistrationControllerReconcilerForTest(t, recorder, mockServiceRegistrationBackend, mockStatusPatcher, mockSecretReconciler)
+		controller, _ := newAuthRegistrationControllerForTest(t, recorder, mockAuthReconciler)
 		request := ctrl.Request{NamespacedName: types.NamespacedName{Name: "auth-reg", Namespace: "ecosystem"}}
 
-		result, err := reconciler.Reconcile(context.Background(), request)
+		result, err := controller.Reconcile(context.Background(), request)
 
 		require.Error(t, err)
 		assert.EqualError(t, err, "get failed")
@@ -697,24 +250,15 @@ func TestAuthRegistrationReconciler_Reconcile(t *testing.T) {
 	})
 
 	t.Run("returns update error when adding finalizer fails", func(t *testing.T) {
-		mockServiceRegistrationBackend := newMockServiceRegistrationBackend(t)
-		mockStatusPatcher := newMockStatusPatcher(t)
-		mockSecretReconciler := newMockSecretReconciler(t)
+		mockAuthReconciler := newMockAuthRegistrationReconciler(t)
 		recorder := &authRegistrationControllerClientRecorder{
 			updateErr: errors.New("update failed"),
 		}
 		authRegistration := newAuthRegistrationForControllerTest("ecosystem", "auth-reg")
-		reconciler, _ := newAuthRegistrationControllerReconcilerForTest(
-			t,
-			recorder,
-			mockServiceRegistrationBackend,
-			mockStatusPatcher,
-			mockSecretReconciler,
-			authRegistration,
-		)
+		controller, _ := newAuthRegistrationControllerForTest(t, recorder, mockAuthReconciler, authRegistration)
 		request := ctrl.Request{NamespacedName: types.NamespacedName{Name: "auth-reg", Namespace: "ecosystem"}}
 
-		result, err := reconciler.Reconcile(context.Background(), request)
+		result, err := controller.Reconcile(context.Background(), request)
 
 		require.Error(t, err)
 		assert.EqualError(t, err, "update failed")
@@ -722,123 +266,64 @@ func TestAuthRegistrationReconciler_Reconcile(t *testing.T) {
 	})
 
 	t.Run("uses deletion flow when deletion timestamp is set", func(t *testing.T) {
-		mockServiceRegistrationBackend := newMockServiceRegistrationBackend(t)
-		mockStatusPatcher := newMockStatusPatcher(t)
-		mockSecretReconciler := newMockSecretReconciler(t)
+		mockAuthReconciler := newMockAuthRegistrationReconciler(t)
 		authRegistration := newAuthRegistrationForControllerTest("ecosystem", "auth-reg")
 		authRegistration.Finalizers = []string{authRegistrationFinalizer}
 		deletionTime := metav1.NewTime(time.Now())
 		authRegistration.DeletionTimestamp = &deletionTime
 		key := types.NamespacedName{Name: authRegistration.Name, Namespace: authRegistration.Namespace}
-		reconciler, c := newAuthRegistrationControllerReconcilerForTest(
-			t,
-			nil,
-			mockServiceRegistrationBackend,
-			mockStatusPatcher,
-			mockSecretReconciler,
-			authRegistration,
-		)
+		controller, _ := newAuthRegistrationControllerForTest(t, nil, mockAuthReconciler, authRegistration)
+		expectedResult := ctrl.Result{Requeue: true}
+		expectedErr := errors.New("delete delegated error")
 
-		mockServiceRegistrationBackend.EXPECT().
-			Delete(mock.Anything, matchRegistration(domain.FromAuthRegistration(authRegistration))).
-			Return(nil).
+		mockAuthReconciler.EXPECT().
+			handleDeletion(mock.Anything, matchAuthRegistration("ecosystem", "auth-reg"), mock.Anything).
+			Return(expectedResult, expectedErr).
 			Once()
 
-		result, err := reconciler.Reconcile(context.Background(), ctrl.Request{NamespacedName: key})
+		result, err := controller.Reconcile(context.Background(), ctrl.Request{NamespacedName: key})
 
-		require.NoError(t, err)
-		assert.Equal(t, ctrl.Result{}, result)
-		updated := &authregistrationv1.AuthRegistration{}
-		getErr := c.Get(context.Background(), key, updated)
-		if apierrors.IsNotFound(getErr) {
-			return
-		}
-
-		require.NoError(t, getErr)
-		assert.False(t, containsFinalizer(updated, authRegistrationFinalizer))
+		require.Error(t, err)
+		assert.Equal(t, expectedErr, err)
+		assert.Equal(t, expectedResult, result)
 	})
 
 	t.Run("persists finalizer before returning handleReconcile errors", func(t *testing.T) {
-		mockServiceRegistrationBackend := newMockServiceRegistrationBackend(t)
-		mockStatusPatcher := newMockStatusPatcher(t)
-		mockSecretReconciler := newMockSecretReconciler(t)
+		mockAuthReconciler := newMockAuthRegistrationReconciler(t)
 		authRegistration := newAuthRegistrationForControllerTest("ecosystem", "auth-reg")
 		key := types.NamespacedName{Name: authRegistration.Name, Namespace: authRegistration.Namespace}
-		reconciler, c := newAuthRegistrationControllerReconcilerForTest(
-			t,
-			nil,
-			mockServiceRegistrationBackend,
-			mockStatusPatcher,
-			mockSecretReconciler,
-			authRegistration,
-		)
-		upsertErr := errors.New("backend unavailable")
+		controller, c := newAuthRegistrationControllerForTest(t, nil, mockAuthReconciler, authRegistration)
+		reconcileErr := errors.New("reconcile failed")
 
-		mockServiceRegistrationBackend.EXPECT().
-			Upsert(mock.Anything, matchRegistration(domain.FromAuthRegistration(authRegistration))).
-			Return(domain.RegistrationResult{}, upsertErr).
-			Once()
-		mockStatusPatcher.EXPECT().
-			PatchRegistrationFailed(mock.Anything, matchAuthRegistration("ecosystem", "auth-reg"), upsertErr).
-			Return(nil).
+		mockAuthReconciler.EXPECT().
+			handleReconcile(mock.Anything, matchAuthRegistration("ecosystem", "auth-reg"), mock.Anything).
+			Return(reconcileErr).
 			Once()
 
-		result, err := reconciler.Reconcile(context.Background(), ctrl.Request{NamespacedName: key})
+		result, err := controller.Reconcile(context.Background(), ctrl.Request{NamespacedName: key})
 
 		require.Error(t, err)
 		assert.Equal(t, ctrl.Result{}, result)
-		assert.ErrorContains(t, err, "failed to upsert service-registration")
+		assert.ErrorContains(t, err, "reconcile failed")
 
 		updated := getAuthRegistrationFromClientForControllerTest(t, c, key)
 		assert.True(t, containsFinalizer(updated, authRegistrationFinalizer))
 	})
 
 	t.Run("reconciles successfully when finalizer already exists", func(t *testing.T) {
-		mockServiceRegistrationBackend := newMockServiceRegistrationBackend(t)
-		mockStatusPatcher := newMockStatusPatcher(t)
-		mockSecretReconciler := newMockSecretReconciler(t)
+		mockAuthReconciler := newMockAuthRegistrationReconciler(t)
 		recorder := &authRegistrationControllerClientRecorder{}
 		authRegistration := newAuthRegistrationForControllerTest("ecosystem", "auth-reg")
 		authRegistration.Finalizers = []string{authRegistrationFinalizer}
 		key := types.NamespacedName{Name: authRegistration.Name, Namespace: authRegistration.Namespace}
-		reconciler, c := newAuthRegistrationControllerReconcilerForTest(
-			t,
-			recorder,
-			mockServiceRegistrationBackend,
-			mockStatusPatcher,
-			mockSecretReconciler,
-			authRegistration,
-		)
-		registrationResult := newOIDCRegistrationResultForControllerTest()
+		controller, c := newAuthRegistrationControllerForTest(t, recorder, mockAuthReconciler, authRegistration)
 
-		mockServiceRegistrationBackend.EXPECT().
-			Upsert(mock.Anything, matchRegistration(domain.FromAuthRegistration(authRegistration))).
-			Return(registrationResult, nil).
-			Once()
-		mockStatusPatcher.EXPECT().
-			PatchResolvedSecretRef(mock.Anything, matchAuthRegistration("ecosystem", "auth-reg"), "auth-reg"+defaultGeneratedSecretSuffix).
-			Return(nil).
-			Once()
-		mockSecretReconciler.EXPECT().
-			Reconcile(
-				mock.Anything,
-				registrationResult,
-				matchAuthRegistration("ecosystem", "auth-reg"),
-				"auth-reg"+defaultGeneratedSecretSuffix,
-				true,
-			).
-			Return(nil).
-			Once()
-		mockStatusPatcher.EXPECT().
-			PatchCredentialsPublished(mock.Anything, matchAuthRegistration("ecosystem", "auth-reg")).
-			Return(nil).
-			Once()
-		mockStatusPatcher.EXPECT().
-			PatchRegistrationSucceeded(mock.Anything, matchAuthRegistration("ecosystem", "auth-reg")).
+		mockAuthReconciler.EXPECT().
+			handleReconcile(mock.Anything, matchAuthRegistration("ecosystem", "auth-reg"), mock.Anything).
 			Return(nil).
 			Once()
 
-		result, err := reconciler.Reconcile(context.Background(), ctrl.Request{NamespacedName: key})
+		result, err := controller.Reconcile(context.Background(), ctrl.Request{NamespacedName: key})
 
 		require.NoError(t, err)
 		assert.Equal(t, ctrl.Result{}, result)
@@ -849,18 +334,19 @@ func TestAuthRegistrationReconciler_Reconcile(t *testing.T) {
 	})
 }
 
-func newAuthRegistrationControllerReconcilerForTest(
+func newAuthRegistrationControllerForTest(
 	t *testing.T,
 	recorder *authRegistrationControllerClientRecorder,
-	mockServiceRegistrationBackend *mockServiceRegistrationBackend,
-	mockStatusPatcher *mockStatusPatcher,
-	mockSecretReconciler *mockSecretReconciler,
+	mockAuthRegistrationReconciler *mockAuthRegistrationReconciler,
 	objects ...ctrlclient.Object,
-) (*AuthRegistrationReconciler, ctrlclient.Client) {
+) (*AuthRegistrationController, ctrlclient.Client) {
 	t.Helper()
 
 	if recorder == nil {
 		recorder = &authRegistrationControllerClientRecorder{}
+	}
+	if mockAuthRegistrationReconciler == nil {
+		mockAuthRegistrationReconciler = newMockAuthRegistrationReconciler(t)
 	}
 
 	builder := fake.NewClientBuilder().
@@ -873,12 +359,9 @@ func newAuthRegistrationControllerReconcilerForTest(
 		})
 
 	client := builder.Build()
-	reconciler := &AuthRegistrationReconciler{
-		Client:                      client,
-		Scheme:                      newAuthRegistrationControllerSchemeForTest(t),
-		credentialsSecretReconciler: mockSecretReconciler,
-		statusPatcher:               mockStatusPatcher,
-		serviceRegistrationBackend:  mockServiceRegistrationBackend,
+	reconciler := &AuthRegistrationController{
+		Client:     client,
+		reconciler: mockAuthRegistrationReconciler,
 	}
 
 	return reconciler, client

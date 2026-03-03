@@ -66,7 +66,7 @@ func startManager(cfg *config.OperatorConfig) error {
 		return fmt.Errorf("failed to create manager: %w", err)
 	}
 
-	authRegCtrl := controller.NewAuthRegistrationReconciler(mgr.GetClient(), mgr.GetScheme(), serviceRegistrationBackend)
+	authRegCtrl := controller.NewAuthRegistrationController(mgr.GetClient(), mgr.GetScheme(), serviceRegistrationBackend)
 
 	if err := authRegCtrl.SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("failed to create controller: %w", err)

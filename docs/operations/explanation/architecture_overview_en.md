@@ -2,7 +2,7 @@
 
 ## Main components
 
-- `AuthRegistrationReconciler`
+- `AuthRegistrationController`
   Handles reconcile flow, finalizer handling, and orchestration.
 - `serviceRegistrationBackend`
   Abstract backend interface (`Upsert`, `Delete`) for connecting the actual service registration (e.g. CAS).

@@ -9,27 +9,23 @@ import (
 	"github.com/cloudogu/k8s-auth-registration-operator/internal/domain"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
 const defaultGeneratedSecretSuffix = "-credentials"
 
+const authRegistrationFinalizer = "k8s.cloudogu.com/auth-registration-finalizer"
+const authRegistrationSecretRefField = "k8s.cloudogu.com/auth-registration-secret-ref"
+
 type secretReconciler interface {
-	Reconcile(
-		ctx context.Context,
-		regResult domain.RegistrationResult,
-		authRegistration *authregistrationv1.AuthRegistration,
-		secretName string,
-		controllerManagedSecret bool,
-	) error
+	Reconcile(ctx context.Context, regResult domain.RegistrationResult, authRegistration *authregistrationv1.AuthRegistration, secretName string, controllerManagedSecret bool) error
 }
 
 type statusPatcher interface {
@@ -41,46 +37,33 @@ type statusPatcher interface {
 	PatchRegistrationSucceeded(ctx context.Context, authRegistration *authregistrationv1.AuthRegistration) error
 }
 
-// ServiceRegistrationBackend abstracts the target system that stores
-// AuthRegistration entries. It allows swapping CAS for another backend later.
 type serviceRegistrationBackend interface {
 	Upsert(ctx context.Context, registration domain.Registration) (domain.RegistrationResult, error)
 	Delete(ctx context.Context, registration domain.Registration) error
 }
 
-const authRegistrationFinalizer = "k8s.cloudogu.com/auth-registration-finalizer"
+type authRegistrationReconciler interface {
+	handleReconcile(ctx context.Context, authRegistration *authregistrationv1.AuthRegistration, logger logr.Logger) error
+	handleDeletion(ctx context.Context, authRegistration *authregistrationv1.AuthRegistration, logger logr.Logger) (ctrl.Result, error)
+}
 
-// AuthRegistrationReconciler reconciles a AuthRegistration object
-type AuthRegistrationReconciler struct {
+// AuthRegistrationController reacts to AuthRegistration and Secret events
+// and delegates domain reconciliation to reconciler.
+type AuthRegistrationController struct {
 	client.Client
-	Scheme *runtime.Scheme
-
-	credentialsSecretReconciler secretReconciler
-	statusPatcher               statusPatcher
-	serviceRegistrationBackend  serviceRegistrationBackend
+	reconciler authRegistrationReconciler
 }
 
-func NewAuthRegistrationReconciler(rtClient client.Client, scheme *runtime.Scheme, backend serviceRegistrationBackend) *AuthRegistrationReconciler {
-	return &AuthRegistrationReconciler{
+func NewAuthRegistrationController(rtClient client.Client, scheme *runtime.Scheme, backend serviceRegistrationBackend) *AuthRegistrationController {
+	return &AuthRegistrationController{
 		Client: rtClient,
-		Scheme: scheme,
-		credentialsSecretReconciler: &authRegistrationSecretReconciler{
-			Client: rtClient,
-			Scheme: scheme,
-		},
-		statusPatcher: &authRegistrationStatusPatcher{
-			Client: rtClient,
-		},
-		serviceRegistrationBackend: backend,
+		reconciler: newAuthRegistrationReconciler(
+			rtClient,
+			&authRegistrationSecretReconciler{Client: rtClient, Scheme: scheme},
+			&authRegistrationStatusPatcher{Client: rtClient},
+			backend,
+		),
 	}
-}
-
-// SetupWithManager sets up the controller with the Manager.
-func (r *AuthRegistrationReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
-		For(&authregistrationv1.AuthRegistration{}).
-		Named("authregistration").
-		Complete(r)
 }
 
 // +kubebuilder:rbac:groups=k8s.cloudogu.com,resources=authregistrations,verbs=get;list;watch;create;update;patch;delete
@@ -90,25 +73,25 @@ func (r *AuthRegistrationReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
-func (r *AuthRegistrationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (c *AuthRegistrationController) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := logf.FromContext(ctx).WithValues("authRegistration", req.NamespacedName)
 
 	var authRegistration authregistrationv1.AuthRegistration
-	if err := r.Get(ctx, req.NamespacedName, &authRegistration); err != nil {
+	if err := c.Get(ctx, req.NamespacedName, &authRegistration); err != nil {
 		return reconcile.Result{}, client.IgnoreNotFound(err)
 	}
 
 	if !authRegistration.DeletionTimestamp.IsZero() {
-		return r.handleDeletion(ctx, &authRegistration, logger)
+		return c.reconciler.handleDeletion(ctx, &authRegistration, logger)
 	}
 
 	if controllerutil.AddFinalizer(&authRegistration, authRegistrationFinalizer) {
-		if err := r.Update(ctx, &authRegistration); err != nil {
+		if err := c.Update(ctx, &authRegistration); err != nil {
 			return reconcile.Result{}, err
 		}
 	}
 
-	if err := r.handleReconcile(ctx, &authRegistration, logger); err != nil {
+	if err := c.reconciler.handleReconcile(ctx, &authRegistration, logger); err != nil {
 		return reconcile.Result{}, err
 	}
 
@@ -116,112 +99,62 @@ func (r *AuthRegistrationReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	return reconcile.Result{}, nil
 }
 
-func (r *AuthRegistrationReconciler) handleReconcile(ctx context.Context, authRegistration *authregistrationv1.AuthRegistration, logger logr.Logger) error {
-	regResult, err := r.serviceRegistrationBackend.Upsert(ctx, domain.FromAuthRegistration(authRegistration))
-	if err != nil {
-		if err := r.statusPatcher.PatchRegistrationFailed(ctx, authRegistration, err); err != nil {
-			logger.Error(err, "Failed to patch status for service registration error")
-		}
-
-		return fmt.Errorf("failed to upsert service-registration: %w", err)
+// SetupWithManager sets up the controller with the Manager.
+func (c *AuthRegistrationController) SetupWithManager(mgr ctrl.Manager) error {
+	if err := mgr.GetFieldIndexer().IndexField(
+		context.Background(),
+		&authregistrationv1.AuthRegistration{},
+		authRegistrationSecretRefField,
+		indexAuthRegistrationBySecretName,
+	); err != nil {
+		return fmt.Errorf("failed to index AuthRegistration by secret reference: %w", err)
 	}
 
-	resolvedSecretName, isControllerManagedSecret, err := resolveSecretName(authRegistration)
-	if err != nil {
-		if err := r.statusPatcher.PatchInvalidSpec(ctx, authRegistration, err); err != nil {
-			logger.Error(err, "Failed to patch status for invalid spec")
-		}
-
-		return fmt.Errorf("failed to resolve secret reference: %w", err)
-	}
-
-	previouslyResolvedSecretName := authRegistration.Status.ResolvedSecretRef
-
-	if err := r.statusPatcher.PatchResolvedSecretRef(ctx, authRegistration, resolvedSecretName); err != nil {
-		return fmt.Errorf("failed to patch status.resolvedSecretName: %w", err)
-	}
-
-	if err := r.credentialsSecretReconciler.Reconcile(ctx, regResult, authRegistration, resolvedSecretName, isControllerManagedSecret); err != nil {
-		if err := r.statusPatcher.PatchSecretReconcileFailed(ctx, authRegistration, resolvedSecretName, err); err != nil {
-			logger.Error(err, "Failed to patch status for Secret reconcile error")
-		}
-
-		return fmt.Errorf("failed to reconcile secret: %w", err)
-	}
-
-	if err := r.cleanupObsoleteGeneratedSecret(ctx, authRegistration, previouslyResolvedSecretName, resolvedSecretName); err != nil {
-		return fmt.Errorf("failed to cleanup obsolete generated secret: %w", err)
-	}
-
-	if err := r.statusPatcher.PatchCredentialsPublished(ctx, authRegistration); err != nil {
-		return fmt.Errorf("failed to patch condition: %w", err)
-	}
-
-	if err := r.statusPatcher.PatchRegistrationSucceeded(ctx, authRegistration); err != nil {
-		return fmt.Errorf("failed to patch condition: %w", err)
-	}
-
-	return nil
+	return ctrl.NewControllerManagedBy(mgr).
+		For(&authregistrationv1.AuthRegistration{}).
+		Watches(&corev1.Secret{}, handler.EnqueueRequestsFromMapFunc(c.mapSecretToAuthRegistrations)).
+		Named("authregistration").
+		Complete(c)
 }
 
-func (r *AuthRegistrationReconciler) cleanupObsoleteGeneratedSecret(ctx context.Context, authRegistration *authregistrationv1.AuthRegistration, previouslyResolvedSecretName string, resolvedSecretName string) error {
-	previouslyResolvedSecretName = strings.TrimSpace(previouslyResolvedSecretName)
-	if previouslyResolvedSecretName == "" || previouslyResolvedSecretName == resolvedSecretName {
+func indexAuthRegistrationBySecretName(object client.Object) []string {
+	authRegistration, ok := object.(*authregistrationv1.AuthRegistration)
+	if !ok {
 		return nil
 	}
 
-	previousSecretKey := types.NamespacedName{
-		Name:      previouslyResolvedSecretName,
-		Namespace: authRegistration.Namespace,
-	}
-
-	var previousSecret corev1.Secret
-	if err := r.Get(ctx, previousSecretKey, &previousSecret); err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil
-		}
-
-		return fmt.Errorf("failed to get previous secret %q: %w", previouslyResolvedSecretName, err)
-	}
-
-	if !isControllerGeneratedSecret(&previousSecret, authRegistration) {
+	secretName, _, err := resolveSecretName(authRegistration)
+	if err != nil {
 		return nil
 	}
 
-	if err := r.Delete(ctx, &previousSecret); err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil
-		}
-
-		return fmt.Errorf("failed to delete previous secret %q: %w", previouslyResolvedSecretName, err)
-	}
-
-	return nil
+	return []string{secretName}
 }
 
-func isControllerGeneratedSecret(secret *corev1.Secret, authRegistration *authregistrationv1.AuthRegistration) bool {
-	return metav1.IsControlledBy(secret, authRegistration)
-}
-
-func (r *AuthRegistrationReconciler) handleDeletion(ctx context.Context, authRegistration *authregistrationv1.AuthRegistration, logger logr.Logger) (ctrl.Result, error) {
-	if !controllerutil.ContainsFinalizer(authRegistration, authRegistrationFinalizer) {
-		return reconcile.Result{}, nil
+func (c *AuthRegistrationController) mapSecretToAuthRegistrations(ctx context.Context, object client.Object) []reconcile.Request {
+	secret, ok := object.(*corev1.Secret)
+	if !ok {
+		return nil
 	}
 
-	if err := r.serviceRegistrationBackend.Delete(ctx, domain.FromAuthRegistration(authRegistration)); err != nil {
-		logger.Error(err, "Failed to remove service registration from backend")
-		return reconcile.Result{}, err
+	var authRegistrationList authregistrationv1.AuthRegistrationList
+	err := c.List(ctx, &authRegistrationList, client.InNamespace(secret.Namespace), client.MatchingFields{authRegistrationSecretRefField: secret.Name})
+	if err != nil {
+		logf.FromContext(ctx).Error(err, "failed to map secret event to AuthRegistration resources", "namespace", secret.Namespace, "name", secret.Name)
+		return nil
 	}
 
-	// the credentials secret will be removed automatically, because an owener-reference is set
-
-	controllerutil.RemoveFinalizer(authRegistration, authRegistrationFinalizer)
-	if err := r.Update(ctx, authRegistration); err != nil {
-		return reconcile.Result{}, err
+	requests := make([]reconcile.Request, 0, len(authRegistrationList.Items))
+	for _, authRegistration := range authRegistrationList.Items {
+		requests = append(requests, reconcile.Request{
+			NamespacedName: types.NamespacedName{
+				Namespace: authRegistration.Namespace,
+				Name:      authRegistration.Name,
+			},
+		})
 	}
 
-	logger.Info("AuthRegistration was deleted and backend registration removed")
-	return reconcile.Result{}, nil
+	return requests
 }
 
 func resolveSecretName(authRegistration *authregistrationv1.AuthRegistration) (string, bool, error) {
