@@ -1,0 +1,20 @@
+global:
+  imagePullSecrets:
+    - name: "ces-container-registries"
+manager:
+  replicas: 1
+  image:
+    registry: docker.io
+    repository: cloudogu/k8s-auth-registration-operator
+    tag: 0.0.1
+  imagePullPolicy: IfNotPresent
+  env:
+    logLevel: info
+    stage: production
+  resourceLimits:
+    memory: 128M
+  resourceRequests:
+    cpu: 50m
+    memory: 128M
+  networkPolicies:
+    enabled: true

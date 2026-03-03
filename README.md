@@ -3,6 +3,11 @@ A Kubernetes operator for AuthRegistration CRs, that performs SSO registrations 
 
 ---
 
+## Documentation
+Detailed project documentation is available in the [docs directory](docs).
+
+---
+
 ## What is the Cloudogu EcoSystem?
 The Cloudogu EcoSystem is an open platform, which lets you choose how and where your team creates great software. Each service or tool is delivered as a Dogu, a Docker container. Each Dogu can easily be integrated in your environment just by pulling it from our registry.
 
