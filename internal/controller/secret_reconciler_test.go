@@ -27,7 +27,7 @@ func TestBuildDesiredSecret(t *testing.T) {
 		)
 		registrationResult := newOIDCRegistrationResultForSecretReconcilerTest()
 
-		secret := buildDesiredSecret(registrationResult, authRegistration, "target-secret", false)
+		secret := buildDesiredSecret(registrationResult, authRegistration, "target-secret")
 
 		assert.Equal(t, "target-secret", secret.Name)
 		assert.Equal(t, "ecosystem", secret.Namespace)
@@ -36,25 +36,11 @@ func TestBuildDesiredSecret(t *testing.T) {
 		assert.Equal(t, []byte("oidc-client-id"), secret.Data["clientId"])
 		assert.Equal(t, []byte("oidc-client-secret"), secret.Data["clientSecret"])
 		assert.Equal(t, []byte("https://issuer.example"), secret.Data["issuerUrl"])
-		assert.NotContains(t, secret.Annotations, generatedSecretAnnotationKey)
-	})
-
-	t.Run("adds generated-secret annotation for controller-managed secrets", func(t *testing.T) {
-		authRegistration := newAuthRegistrationForSecretReconcilerTest(
-			"ecosystem",
-			"my-auth-registration",
-			authregistrationv1.AuthProtocolOIDC,
-		)
-		registrationResult := newOIDCRegistrationResultForSecretReconcilerTest()
-
-		secret := buildDesiredSecret(registrationResult, authRegistration, "target-secret", true)
-
-		assert.Equal(t, "true", secret.Annotations[generatedSecretAnnotationKey])
 	})
 }
 
 func TestAuthRegistrationSecretReconciler_Reconcile_CreatePaths(t *testing.T) {
-	t.Run("creates unmanaged secret when the secret does not exist", func(t *testing.T) {
+	t.Run("creates managed secret when the secret does not exist", func(t *testing.T) {
 		scheme := newSecretReconcilerSchemeForTest(t, true)
 		recorder := &secretReconcilerClientRecorder{}
 		reconciler, c := newSecretReconcilerForTest(t, scheme, recorder)
@@ -69,12 +55,16 @@ func TestAuthRegistrationSecretReconciler_Reconcile_CreatePaths(t *testing.T) {
 		assert.Equal(t, 0, recorder.updateCalls)
 
 		secret := getSecretFromClientForTest(t, c, types.NamespacedName{Name: "target-secret", Namespace: "ecosystem"})
-		assert.Empty(t, secret.OwnerReferences)
-		assert.NotContains(t, secret.Annotations, generatedSecretAnnotationKey)
 		assert.Equal(t, []byte("oidc-client-id"), secret.Data["clientId"])
+
+		controllerRef := metav1.GetControllerOf(secret)
+		require.NotNil(t, controllerRef)
+		assert.Equal(t, "AuthRegistration", controllerRef.Kind)
+		assert.Equal(t, "auth-reg", controllerRef.Name)
+		assert.Equal(t, "k8s.cloudogu.com/v1", controllerRef.APIVersion)
 	})
 
-	t.Run("creates managed secret with owner reference and generated annotation", func(t *testing.T) {
+	t.Run("creates managed secret with owner reference", func(t *testing.T) {
 		scheme := newSecretReconcilerSchemeForTest(t, true)
 		recorder := &secretReconcilerClientRecorder{}
 		reconciler, c := newSecretReconcilerForTest(t, scheme, recorder)
@@ -94,7 +84,6 @@ func TestAuthRegistrationSecretReconciler_Reconcile_CreatePaths(t *testing.T) {
 		assert.Equal(t, "AuthRegistration", controllerRef.Kind)
 		assert.Equal(t, "auth-reg", controllerRef.Name)
 		assert.Equal(t, "k8s.cloudogu.com/v1", controllerRef.APIVersion)
-		assert.Equal(t, "true", secret.Annotations[generatedSecretAnnotationKey])
 	})
 
 	t.Run("returns an error when setting owner reference on create fails", func(t *testing.T) {
@@ -146,7 +135,7 @@ func TestAuthRegistrationSecretReconciler_Reconcile_UpdatePaths(t *testing.T) {
 		err := reconciler.Reconcile(context.Background(), registrationResult, authRegistration, "target-secret", false)
 
 		require.Error(t, err)
-		assert.EqualError(t, err, "get failed")
+		assert.EqualError(t, err, "failed to get secret \"target-secret\": get failed")
 		assert.Equal(t, 0, recorder.createCalls)
 		assert.Equal(t, 0, recorder.updateCalls)
 	})
@@ -226,7 +215,7 @@ func TestAuthRegistrationSecretReconciler_Reconcile_UpdatePaths(t *testing.T) {
 		recorder := &secretReconcilerClientRecorder{}
 		authRegistration := newAuthRegistrationForSecretReconcilerTest("ecosystem", "auth-reg", authregistrationv1.AuthProtocolOIDC)
 		registrationResult := newOIDCRegistrationResultForSecretReconcilerTest()
-		existingSecret := buildDesiredSecret(registrationResult, authRegistration, "target-secret", false)
+		existingSecret := buildDesiredSecret(registrationResult, authRegistration, "target-secret")
 		existingSecret.Annotations = map[string]string{}
 
 		reconciler, _ := newSecretReconcilerForTest(t, scheme, recorder, existingSecret)
@@ -266,7 +255,6 @@ func TestAuthRegistrationSecretReconciler_Reconcile_UpdatePaths(t *testing.T) {
 		require.NotNil(t, controllerRef)
 		assert.Equal(t, "AuthRegistration", controllerRef.Kind)
 		assert.Equal(t, "auth-reg", controllerRef.Name)
-		assert.Equal(t, "true", secret.Annotations[generatedSecretAnnotationKey])
 	})
 
 	t.Run("returns an error when setting owner reference on update fails", func(t *testing.T) {

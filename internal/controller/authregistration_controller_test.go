@@ -1020,11 +1020,9 @@ func (r *authRegistrationControllerClientRecorder) interceptDelete(
 func newGeneratedSecretForControllerTest(authRegistration *authregistrationv1.AuthRegistration, secretName string) *corev1.Secret {
 	return &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      secretName,
-			Namespace: authRegistration.Namespace,
-			Annotations: map[string]string{
-				generatedSecretAnnotationKey: "true",
-			},
+			Name:        secretName,
+			Namespace:   authRegistration.Namespace,
+			Annotations: map[string]string{},
 			OwnerReferences: []metav1.OwnerReference{
 				{
 					APIVersion: authregistrationv1.GroupVersion.String(),

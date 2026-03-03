@@ -200,10 +200,6 @@ func (r *AuthRegistrationReconciler) cleanupObsoleteGeneratedSecret(ctx context.
 }
 
 func isControllerGeneratedSecret(secret *corev1.Secret, authRegistration *authregistrationv1.AuthRegistration) bool {
-	if secret.Annotations == nil || secret.Annotations[generatedSecretAnnotationKey] != "true" {
-		return false
-	}
-
 	return metav1.IsControlledBy(secret, authRegistration)
 }
 

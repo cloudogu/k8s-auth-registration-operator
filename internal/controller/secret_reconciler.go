@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"maps"
 
 	authregistrationv1 "github.com/cloudogu/k8s-auth-registration-lib/api/v1"
@@ -18,7 +19,6 @@ import (
 
 const (
 	authRegistrationNameLabelKey = "k8s.cloudogu.com/auth-registration"
-	generatedSecretAnnotationKey = "k8s.cloudogu.com/generated-secret"
 )
 
 type authRegistrationSecretReconciler struct {
@@ -33,22 +33,22 @@ func (r *authRegistrationSecretReconciler) Reconcile(
 	secretName string,
 	isControllerManagedSecret bool,
 ) error {
-	desiredSecret := buildDesiredSecret(registrationResult, authRegistration, secretName, isControllerManagedSecret)
+	desiredSecret := buildDesiredSecret(registrationResult, authRegistration, secretName)
 	secretObjectKey := types.NamespacedName{Name: secretName, Namespace: authRegistration.Namespace}
 
 	var currentSecret corev1.Secret
 	err := r.Client.Get(ctx, secretObjectKey, &currentSecret)
 	if apierrors.IsNotFound(err) {
-		if isControllerManagedSecret {
-			if ownerReferenceErr := controllerutil.SetControllerReference(authRegistration, desiredSecret, r.Scheme); ownerReferenceErr != nil {
-				return ownerReferenceErr
-			}
+		// if the secret does not exist, set the owner reference before creating it
+		// this is to avoid orphaned secrets that we created
+		if ownerReferenceErr := controllerutil.SetControllerReference(authRegistration, desiredSecret, r.Scheme); ownerReferenceErr != nil {
+			return ownerReferenceErr
 		}
 
 		return r.Client.Create(ctx, desiredSecret)
 	}
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get secret %q: %w", secretName, err)
 	}
 
 	secretBeforeUpdate := currentSecret.DeepCopy()
@@ -83,7 +83,7 @@ func (r *authRegistrationSecretReconciler) Reconcile(
 	return r.Client.Update(ctx, &currentSecret)
 }
 
-func buildDesiredSecret(result domain.RegistrationResult, authRegistration *authregistrationv1.AuthRegistration, secretName string, controllerManagedSecret bool) *corev1.Secret {
+func buildDesiredSecret(result domain.RegistrationResult, authRegistration *authregistrationv1.AuthRegistration, secretName string) *corev1.Secret {
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      secretName,
@@ -91,6 +91,7 @@ func buildDesiredSecret(result domain.RegistrationResult, authRegistration *auth
 			Labels: map[string]string{
 				authRegistrationNameLabelKey: authRegistration.Name,
 			},
+			Annotations: map[string]string{},
 		},
 		Type: corev1.SecretTypeOpaque,
 		Data: map[string][]byte{},
@@ -98,12 +99,6 @@ func buildDesiredSecret(result domain.RegistrationResult, authRegistration *auth
 
 	// add secret data from registration-result
 	maps.Copy(secret.Data, result.GetSecretData())
-
-	if controllerManagedSecret {
-		secret.Annotations = map[string]string{
-			generatedSecretAnnotationKey: "true",
-		}
-	}
 
 	return secret
 }
