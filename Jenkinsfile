@@ -15,8 +15,6 @@ gpg = new Gpg(this, docker)
 goVersion = "1.26.0"
 Makefile makefile = new Makefile(this)
 
-componentOperatorVersion="1.13.0"
-
 // Configuration of repository
 repositoryOwner = "cloudogu"
 repositoryName = "k8s-auth-registration-operator"
@@ -113,7 +111,8 @@ node('docker') {
             stage('Deploy Manager') {
                 withCredentials([[$class: 'UsernamePasswordMultiBinding', credentialsId: 'harborhelmchartpush', usernameVariable: 'HARBOR_USERNAME', passwordVariable: 'HARBOR_PASSWORD']]) {
                     k3d.helm("registry login ${registry} --username '${HARBOR_USERNAME}' --password '${HARBOR_PASSWORD}'")
-                    k3d.helm("install k8s-component-operator-crd oci://${registry}/k8s/k8s-component-operator-crd  --version ${componentOperatorVersion}")
+                    k3d.helm("install k8s-component-operator-crd oci://${registry}/k8s/k8s-component-operator-crd")
+                    k3d.helm("install k8s-auth-registration-crd oci://${registry}/k8s/k8s-auth-registration-crd")
                     k3d.helm("registry logout ${registry}")
                 }
                 k3d.helm("install ${repositoryName} ${helmChartDir}")
