@@ -20,6 +20,8 @@ type Registration struct {
 	Params    map[string]string
 }
 
+type RegistrationData map[string][]byte
+
 type OIDCResult struct {
 	ClientID     string
 	ClientSecret string
@@ -47,13 +49,13 @@ type RegistrationResult struct {
 	CAS   *CASResult
 }
 
-func (rr RegistrationResult) GetSecretData() map[string][]byte {
+func (rr RegistrationResult) GetRegistrationData() RegistrationData {
 	if rr.Protocol == ProtocolCAS && rr.CAS != nil {
-		return map[string][]byte{"serviceId": []byte(rr.CAS.ServiceID)}
+		return RegistrationData{"serviceId": []byte(rr.CAS.ServiceID)}
 	}
 
 	if rr.Protocol == ProtocolOIDC && rr.OIDC != nil {
-		return map[string][]byte{
+		return RegistrationData{
 			"clientId":     []byte(rr.OIDC.ClientID),
 			"clientSecret": []byte(rr.OIDC.ClientSecret),
 			"issuerUrl":    []byte(rr.OIDC.IssuerURL),
@@ -61,7 +63,7 @@ func (rr RegistrationResult) GetSecretData() map[string][]byte {
 	}
 
 	if rr.Protocol == ProtocolOAuth && rr.OAuth != nil {
-		return map[string][]byte{
+		return RegistrationData{
 			"clientId":     []byte(rr.OAuth.ClientID),
 			"clientSecret": []byte(rr.OAuth.ClientSecret),
 			"authURL":      []byte(rr.OAuth.AuthURL),
@@ -69,7 +71,7 @@ func (rr RegistrationResult) GetSecretData() map[string][]byte {
 		}
 	}
 
-	return map[string][]byte{}
+	return RegistrationData{}
 }
 
 func FromAuthRegistration(registration *authregistrationv1.AuthRegistration) Registration {

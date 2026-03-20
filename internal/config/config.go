@@ -3,17 +3,23 @@ package config
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 )
 
 const (
-	StageDevelopment = "development"
-	StageProduction  = "production"
-	StageEnvVar      = "STAGE"
-	namespaceEnvVar  = "NAMESPACE"
-	logLevelEnvVar   = "LOG_LEVEL"
+	StageDevelopment  = "development"
+	StageProduction   = "production"
+	StageEnvVar       = "STAGE"
+	namespaceEnvVar   = "NAMESPACE"
+	logLevelEnvVar    = "LOG_LEVEL"
+	casBaseURLEnvVar  = "CAS_BASE_URL"
+	casUsernameEnvVar = "CAS_USERNAME"
+	casPasswordEnvVar = "CAS_PASSWORD"
+	casTimeoutEnvVar  = "CAS_TIMEOUT"
+	defaultCASTimeout = 10 * time.Second
 )
 
 var log = ctrl.Log.WithName("config")
@@ -27,8 +33,17 @@ func IsStageDevelopment() bool {
 type OperatorConfig struct {
 	// Namespace specifies the namespace that the operator is deployed to.
 	Namespace string
+	// Cas contains the connection settings for the Cas service registry API.
+	Cas CasConfig
 	// ControllerOptions contains the options for the controller manager
 	ControllerOptions ctrl.Options
+}
+
+type CasConfig struct {
+	BaseURL  string
+	Username string
+	Password string
+	Timeout  time.Duration
 }
 
 // NewOperatorConfig creates a new operator config by reading values from the environment variables
@@ -41,10 +56,16 @@ func NewOperatorConfig(scheme *runtime.Scheme) (*OperatorConfig, error) {
 	}
 	log.Info(fmt.Sprintf("Deploying the k8s-auth-registration-operator in namespace %s", namespace))
 
+	casConfig, err := getCASConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed to read Cas config: %w", err)
+	}
+
 	ctrlOptions := getControllerOptions(scheme, namespace)
 
 	return &OperatorConfig{
 		Namespace:         namespace,
+		Cas:               casConfig,
 		ControllerOptions: ctrlOptions,
 	}, nil
 }
@@ -80,10 +101,53 @@ func GetNamespace() (string, error) {
 	return namespace, nil
 }
 
+func getCASConfig() (CasConfig, error) {
+	baseURL, err := getEnvVar(casBaseURLEnvVar)
+	if err != nil {
+		return CasConfig{}, fmt.Errorf("failed to get env var [%s]: %w", casBaseURLEnvVar, err)
+	}
+
+	username, err := getEnvVar(casUsernameEnvVar)
+	if err != nil {
+		return CasConfig{}, fmt.Errorf("failed to get env var [%s]: %w", casUsernameEnvVar, err)
+	}
+
+	password, err := getEnvVar(casPasswordEnvVar)
+	if err != nil {
+		return CasConfig{}, fmt.Errorf("failed to get env var [%s]: %w", casPasswordEnvVar, err)
+	}
+
+	timeout, err := getEnvDuration(casTimeoutEnvVar, defaultCASTimeout)
+	if err != nil {
+		return CasConfig{}, fmt.Errorf("failed to parse env var [%s]: %w", casTimeoutEnvVar, err)
+	}
+
+	return CasConfig{
+		BaseURL:  baseURL,
+		Username: username,
+		Password: password,
+		Timeout:  timeout,
+	}, nil
+}
+
 func getEnvVar(name string) (string, error) {
 	env, found := os.LookupEnv(name)
 	if !found {
 		return "", fmt.Errorf("environment variable %s must be set", name)
 	}
 	return env, nil
+}
+
+func getEnvDuration(name string, defaultValue time.Duration) (time.Duration, error) {
+	value, found := os.LookupEnv(name)
+	if !found || value == "" {
+		return defaultValue, nil
+	}
+
+	duration, err := time.ParseDuration(value)
+	if err != nil {
+		return 0, err
+	}
+
+	return duration, nil
 }

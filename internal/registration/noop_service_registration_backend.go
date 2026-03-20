@@ -11,7 +11,7 @@ import (
 // backend is configured. It can be replaced by CAS or another implementation.
 type NoOpServiceRegistrationBackend struct{}
 
-func (b *NoOpServiceRegistrationBackend) Upsert(_ context.Context, reg domain.Registration) (domain.RegistrationResult, error) {
+func (b *NoOpServiceRegistrationBackend) Upsert(_ context.Context, reg domain.Registration, _ domain.RegistrationData) (domain.RegistrationResult, error) {
 	result := domain.RegistrationResult{
 		Protocol:       reg.Protocol,
 		RegistrationID: fmt.Sprintf("%s-%s", reg.Protocol, reg.Consumer),

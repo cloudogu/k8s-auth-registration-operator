@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"testing"
+	"time"
 
 	"github.com/go-logr/logr"
 	"github.com/stretchr/testify/assert"
@@ -41,6 +42,10 @@ func TestNewOperatorConfig(t *testing.T) {
 		// given
 		t.Setenv(StageEnvVar, StageDevelopment)
 		t.Setenv(namespaceEnvVar, "ecosystem")
+		t.Setenv(casBaseURLEnvVar, "https://cas.example.com/cas")
+		t.Setenv(casUsernameEnvVar, "cas-user")
+		t.Setenv(casPasswordEnvVar, "cas-password")
+		t.Setenv(casTimeoutEnvVar, "15s")
 
 		oldLog := log
 		defer func() { log = oldLog }()
@@ -57,6 +62,10 @@ func TestNewOperatorConfig(t *testing.T) {
 		// then
 		require.NoError(t, err)
 		assert.Equal(t, "ecosystem", actual.Namespace)
+		assert.Equal(t, "https://cas.example.com/cas", actual.Cas.BaseURL)
+		assert.Equal(t, "cas-user", actual.Cas.Username)
+		assert.Equal(t, "cas-password", actual.Cas.Password)
+		assert.Equal(t, 15*time.Second, actual.Cas.Timeout)
 		assert.NotNil(t, actual.ControllerOptions)
 	})
 }
@@ -162,5 +171,30 @@ func TestConfigureStage(t *testing.T) {
 		configureStage()
 
 		assert.Equal(t, StageProduction, Stage)
+	})
+}
+
+func TestGetCASConfig(t *testing.T) {
+	t.Run("returns error when required Cas env vars are missing", func(t *testing.T) {
+		t.Setenv(casBaseURLEnvVar, "")
+		require.NoError(t, os.Unsetenv(casBaseURLEnvVar))
+
+		_, err := getCASConfig()
+
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "failed to get env var [CAS_BASE_URL]")
+	})
+
+	t.Run("uses default timeout when CAS_TIMEOUT is not set", func(t *testing.T) {
+		t.Setenv(casBaseURLEnvVar, "https://cas.example.com/cas")
+		t.Setenv(casUsernameEnvVar, "cas-user")
+		t.Setenv(casPasswordEnvVar, "cas-password")
+		t.Setenv(casTimeoutEnvVar, "")
+		require.NoError(t, os.Unsetenv(casTimeoutEnvVar))
+
+		cfg, err := getCASConfig()
+
+		require.NoError(t, err)
+		assert.Equal(t, defaultCASTimeout, cfg.Timeout)
 	})
 }

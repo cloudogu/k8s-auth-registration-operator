@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestRegistrationResult_GetSecretData(t *testing.T) {
+func TestRegistrationResult_GetRegistrationData(t *testing.T) {
 	t.Run("should return CAS secret data", func(t *testing.T) {
 		result := RegistrationResult{
 			Protocol: ProtocolCAS,
@@ -16,9 +16,9 @@ func TestRegistrationResult_GetSecretData(t *testing.T) {
 			},
 		}
 
-		secretData := result.GetSecretData()
+		secretData := result.GetRegistrationData()
 
-		assert.Equal(t, map[string][]byte{
+		assert.Equal(t, RegistrationData{
 			"serviceId": []byte("service-id-1"),
 		}, secretData)
 	})
@@ -33,9 +33,9 @@ func TestRegistrationResult_GetSecretData(t *testing.T) {
 			},
 		}
 
-		secretData := result.GetSecretData()
+		secretData := result.GetRegistrationData()
 
-		assert.Equal(t, map[string][]byte{
+		assert.Equal(t, RegistrationData{
 			"clientId":     []byte("client-id"),
 			"clientSecret": []byte("client-secret"),
 			"issuerUrl":    []byte("https://issuer.example.com"),
@@ -53,9 +53,9 @@ func TestRegistrationResult_GetSecretData(t *testing.T) {
 			},
 		}
 
-		secretData := result.GetSecretData()
+		secretData := result.GetRegistrationData()
 
-		assert.Equal(t, map[string][]byte{
+		assert.Equal(t, RegistrationData{
 			"clientId":     []byte("oauth-client-id"),
 			"clientSecret": []byte("oauth-client-secret"),
 			"authURL":      []byte("https://auth.example.com"),
@@ -68,7 +68,7 @@ func TestRegistrationResult_GetSecretData(t *testing.T) {
 			Protocol: Protocol("UNKNOWN"),
 		}
 
-		secretData := result.GetSecretData()
+		secretData := result.GetRegistrationData()
 
 		assert.Empty(t, secretData)
 	})
@@ -78,7 +78,7 @@ func TestRegistrationResult_GetSecretData(t *testing.T) {
 			Protocol: ProtocolCAS,
 		}
 
-		secretData := result.GetSecretData()
+		secretData := result.GetRegistrationData()
 
 		assert.Empty(t, secretData)
 	})
@@ -88,7 +88,7 @@ func TestRegistrationResult_GetSecretData(t *testing.T) {
 			Protocol: ProtocolOIDC,
 		}
 
-		secretData := result.GetSecretData()
+		secretData := result.GetRegistrationData()
 
 		assert.Empty(t, secretData)
 	})
@@ -98,7 +98,7 @@ func TestRegistrationResult_GetSecretData(t *testing.T) {
 			Protocol: ProtocolOAuth,
 		}
 
-		secretData := result.GetSecretData()
+		secretData := result.GetRegistrationData()
 
 		assert.Empty(t, secretData)
 	})

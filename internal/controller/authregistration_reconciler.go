@@ -35,15 +35,6 @@ func newAuthRegistrationReconciler(rtClient client.Client, credentialsSecretReco
 }
 
 func (r *defaultAuthRegistrationReconciler) handleReconcile(ctx context.Context, authRegistration *authregistrationv1.AuthRegistration, logger logr.Logger) error {
-	regResult, err := r.serviceRegistrationBackend.Upsert(ctx, domain.FromAuthRegistration(authRegistration))
-	if err != nil {
-		if err := r.statusPatcher.PatchRegistrationFailed(ctx, authRegistration, err); err != nil {
-			logger.Error(err, "Failed to patch status for service registration error")
-		}
-
-		return fmt.Errorf("failed to upsert service-registration: %w", err)
-	}
-
 	resolvedSecretName, isControllerManagedSecret, err := resolveSecretName(authRegistration)
 	if err != nil {
 		if err := r.statusPatcher.PatchInvalidSpec(ctx, authRegistration, err); err != nil {
@@ -54,6 +45,20 @@ func (r *defaultAuthRegistrationReconciler) handleReconcile(ctx context.Context,
 	}
 
 	previouslyResolvedSecretName := authRegistration.Status.ResolvedSecretRef
+
+	existingData, err := r.readRegistrationData(ctx, authRegistration.Namespace, resolvedSecretName)
+	if err != nil {
+		return fmt.Errorf("failed to read existing registration data: %w", err)
+	}
+
+	regResult, err := r.serviceRegistrationBackend.Upsert(ctx, domain.FromAuthRegistration(authRegistration), existingData)
+	if err != nil {
+		if err := r.statusPatcher.PatchRegistrationFailed(ctx, authRegistration, err); err != nil {
+			logger.Error(err, "Failed to patch status for service registration error")
+		}
+
+		return fmt.Errorf("failed to upsert service-registration: %w", err)
+	}
 
 	if err := r.statusPatcher.PatchResolvedSecretRef(ctx, authRegistration, resolvedSecretName); err != nil {
 		return fmt.Errorf("failed to patch status.resolvedSecretName: %w", err)
@@ -80,6 +85,26 @@ func (r *defaultAuthRegistrationReconciler) handleReconcile(ctx context.Context,
 	}
 
 	return nil
+}
+
+func (r *defaultAuthRegistrationReconciler) readRegistrationData(ctx context.Context, namespace string, secretName string) (domain.RegistrationData, error) {
+	var secret corev1.Secret
+	err := r.Get(ctx, types.NamespacedName{Name: secretName, Namespace: namespace}, &secret)
+	if apierrors.IsNotFound(err) {
+		return domain.RegistrationData{}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get secret %q: %w", secretName, err)
+	}
+
+	data := domain.RegistrationData{}
+	for key, value := range secret.Data {
+		copied := make([]byte, len(value))
+		copy(copied, value)
+		data[key] = copied
+	}
+
+	return data, nil
 }
 
 func (r *defaultAuthRegistrationReconciler) cleanupObsoleteGeneratedSecret(ctx context.Context, authRegistration *authregistrationv1.AuthRegistration, previouslyResolvedSecretName string, resolvedSecretName string) error {
