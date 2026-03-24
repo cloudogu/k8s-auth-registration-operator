@@ -68,6 +68,30 @@ func TestNewOperatorConfig(t *testing.T) {
 		assert.Equal(t, 15*time.Second, actual.Cas.Timeout)
 		assert.NotNil(t, actual.ControllerOptions)
 	})
+
+	t.Run("should fail when Cas config cannot be read", func(t *testing.T) {
+		t.Setenv(StageEnvVar, StageProduction)
+		t.Setenv(namespaceEnvVar, "ecosystem")
+		t.Setenv(casBaseURLEnvVar, "https://cas.example.com/cas")
+		t.Setenv(casUsernameEnvVar, "cas-user")
+		t.Setenv(casPasswordEnvVar, "cas-password")
+		t.Setenv(casTimeoutEnvVar, "invalid-duration")
+
+		oldLog := log
+		defer func() { log = oldLog }()
+		logMock := newMockLogSink(t)
+		logMock.EXPECT().Init(mock.Anything).Return()
+		logMock.EXPECT().Enabled(0).Return(true)
+		logMock.EXPECT().Info(0, "Deploying the k8s-auth-registration-operator in namespace ecosystem").Return()
+		log = logr.New(logMock)
+
+		actual, err := NewOperatorConfig(testScheme)
+
+		require.Error(t, err)
+		assert.Nil(t, actual)
+		assert.ErrorContains(t, err, "failed to read Cas config")
+		assert.ErrorContains(t, err, "failed to parse env var [CAS_TIMEOUT]")
+	})
 }
 
 func TestGetLogLevel(t *testing.T) {
@@ -185,6 +209,30 @@ func TestGetCASConfig(t *testing.T) {
 		assert.ErrorContains(t, err, "failed to get env var [CAS_BASE_URL]")
 	})
 
+	t.Run("returns error when Cas username is missing", func(t *testing.T) {
+		t.Setenv(casBaseURLEnvVar, "https://cas.example.com/cas")
+		t.Setenv(casUsernameEnvVar, "")
+		require.NoError(t, os.Unsetenv(casUsernameEnvVar))
+		t.Setenv(casPasswordEnvVar, "cas-password")
+
+		_, err := getCASConfig()
+
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "failed to get env var [CAS_USERNAME]")
+	})
+
+	t.Run("returns error when Cas password is missing", func(t *testing.T) {
+		t.Setenv(casBaseURLEnvVar, "https://cas.example.com/cas")
+		t.Setenv(casUsernameEnvVar, "cas-user")
+		t.Setenv(casPasswordEnvVar, "")
+		require.NoError(t, os.Unsetenv(casPasswordEnvVar))
+
+		_, err := getCASConfig()
+
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "failed to get env var [CAS_PASSWORD]")
+	})
+
 	t.Run("uses default timeout when CAS_TIMEOUT is not set", func(t *testing.T) {
 		t.Setenv(casBaseURLEnvVar, "https://cas.example.com/cas")
 		t.Setenv(casUsernameEnvVar, "cas-user")
@@ -196,5 +244,37 @@ func TestGetCASConfig(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Equal(t, defaultCASTimeout, cfg.Timeout)
+	})
+
+	t.Run("returns error when Cas timeout cannot be parsed", func(t *testing.T) {
+		t.Setenv(casBaseURLEnvVar, "https://cas.example.com/cas")
+		t.Setenv(casUsernameEnvVar, "cas-user")
+		t.Setenv(casPasswordEnvVar, "cas-password")
+		t.Setenv(casTimeoutEnvVar, "not-a-duration")
+
+		_, err := getCASConfig()
+
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "failed to parse env var [CAS_TIMEOUT]")
+	})
+}
+
+func TestGetEnvDuration(t *testing.T) {
+	t.Run("returns configured duration when env var is valid", func(t *testing.T) {
+		t.Setenv(casTimeoutEnvVar, "30s")
+
+		duration, err := getEnvDuration(casTimeoutEnvVar, defaultCASTimeout)
+
+		require.NoError(t, err)
+		assert.Equal(t, 30*time.Second, duration)
+	})
+
+	t.Run("returns error when env var cannot be parsed", func(t *testing.T) {
+		t.Setenv(casTimeoutEnvVar, "broken")
+
+		duration, err := getEnvDuration(casTimeoutEnvVar, defaultCASTimeout)
+
+		require.Error(t, err)
+		assert.Equal(t, time.Duration(0), duration)
 	})
 }

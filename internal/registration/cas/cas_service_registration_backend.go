@@ -12,6 +12,8 @@ import (
 	libconfig "github.com/cloudogu/k8s-registry-lib/config"
 )
 
+var randomRead = rand.Read
+
 type globalConfigRepo interface {
 	Get(context.Context) (libconfig.GlobalConfig, error)
 }
@@ -166,7 +168,7 @@ func clientSecretDataKey(protocol domain.Protocol) string {
 
 func generateClientSecret() (string, error) {
 	bytes := make([]byte, 32)
-	if _, err := rand.Read(bytes); err != nil {
+	if _, err := randomRead(bytes); err != nil {
 		return "", fmt.Errorf("failed to generate client secret: %w", err)
 	}
 

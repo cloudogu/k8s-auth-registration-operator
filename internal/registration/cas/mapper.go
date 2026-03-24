@@ -78,7 +78,7 @@ func (m *serviceMapper) BuildRegistrationResult(reg domain.Registration, service
 	if err != nil {
 		return domain.RegistrationResult{}, fmt.Errorf("failed to get fqdn: %w", err)
 	}
-	baseURL := fmt.Sprintf("https://%s/%s", fqdn, m.casBasePath)
+	baseURL := fmt.Sprintf("https://%s/%s", fqdn, strings.TrimLeft(m.casBasePath, "/"))
 
 	result := domain.RegistrationResult{
 		Protocol:       reg.Protocol,
