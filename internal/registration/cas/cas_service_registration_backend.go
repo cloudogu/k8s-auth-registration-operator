@@ -16,19 +16,33 @@ type globalConfigRepo interface {
 	Get(context.Context) (libconfig.GlobalConfig, error)
 }
 
-type CASServiceRegistrationBackend struct {
-	client *Client
-	mapper serviceMapper
+type apiClient interface {
+	BaseURL() string
+	ListServices(ctx context.Context) ([]RegisteredService, error)
+	CreateService(ctx context.Context, service RegisteredService) (RegisteredService, error)
+	UpdateService(ctx context.Context, service RegisteredService) (RegisteredService, error)
+	DeleteService(ctx context.Context, id int64) error
 }
 
-func NewCASServiceRegistrationBackend(globalConfigRepo globalConfigRepo, client *Client) (*CASServiceRegistrationBackend, error) {
+type registrationMapper interface {
+	ValidateRegistration(reg domain.Registration) error
+	BuildServicePayload(ctx context.Context, reg domain.Registration, existing *RegisteredService, services []RegisteredService, clientSecret string) (RegisteredService, error)
+	BuildRegistrationResult(reg domain.Registration, service RegisteredService, clientSecret string) (domain.RegistrationResult, error)
+}
+
+type CASServiceRegistrationBackend struct {
+	client apiClient
+	mapper registrationMapper
+}
+
+func NewCASServiceRegistrationBackend(globalConfigRepo globalConfigRepo, client apiClient) (*CASServiceRegistrationBackend, error) {
 	if client == nil {
 		return nil, fmt.Errorf("client must not be nil")
 	}
 
-	casBaseUrl, err := url.ParseRequestURI(client.baseURL)
+	casBaseUrl, err := url.ParseRequestURI(client.BaseURL())
 	if err != nil {
-		return nil, fmt.Errorf("invalid base URL %q: %w", client.baseURL, err)
+		return nil, fmt.Errorf("invalid base URL %q: %w", client.BaseURL(), err)
 	}
 
 	return &CASServiceRegistrationBackend{

@@ -61,6 +61,10 @@ func NewClient(cfg ClientConfig, httpClient *http.Client) (*Client, error) {
 	}, nil
 }
 
+func (c *Client) BaseURL() string {
+	return c.baseURL
+}
+
 func (c *Client) ListServices(ctx context.Context) ([]RegisteredService, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+registeredServicesPath, nil)
 	if err != nil {

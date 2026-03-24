@@ -17,14 +17,14 @@ type serviceMapper struct {
 	casBasePath      string
 }
 
-func newServiceMapper(globalConfigRepo globalConfigRepo, casBasePath string) serviceMapper {
-	return serviceMapper{
+func newServiceMapper(globalConfigRepo globalConfigRepo, casBasePath string) *serviceMapper {
+	return &serviceMapper{
 		globalConfigRepo: globalConfigRepo,
 		casBasePath:      casBasePath,
 	}
 }
 
-func (m serviceMapper) ValidateRegistration(reg domain.Registration) error {
+func (m *serviceMapper) ValidateRegistration(reg domain.Registration) error {
 	if strings.TrimSpace(reg.Consumer) == "" {
 		return fmt.Errorf("consumer must not be empty")
 	}
@@ -38,7 +38,7 @@ func (m serviceMapper) ValidateRegistration(reg domain.Registration) error {
 	return nil
 }
 
-func (m serviceMapper) BuildServicePayload(ctx context.Context, reg domain.Registration, existing *RegisteredService, services []RegisteredService, clientSecret string) (RegisteredService, error) {
+func (m *serviceMapper) BuildServicePayload(ctx context.Context, reg domain.Registration, existing *RegisteredService, services []RegisteredService, clientSecret string) (RegisteredService, error) {
 	fqdn, err := m.getFQDN(ctx)
 	if err != nil {
 		return RegisteredService{}, fmt.Errorf("failed to get fqdn: %w", err)
@@ -73,7 +73,7 @@ func (m serviceMapper) BuildServicePayload(ctx context.Context, reg domain.Regis
 	return service, nil
 }
 
-func (m serviceMapper) BuildRegistrationResult(reg domain.Registration, service RegisteredService, clientSecret string) (domain.RegistrationResult, error) {
+func (m *serviceMapper) BuildRegistrationResult(reg domain.Registration, service RegisteredService, clientSecret string) (domain.RegistrationResult, error) {
 	fqdn, err := m.getFQDN(context.Background())
 	if err != nil {
 		return domain.RegistrationResult{}, fmt.Errorf("failed to get fqdn: %w", err)
@@ -195,7 +195,7 @@ func resolveClientID(reg domain.Registration, existing *RegisteredService) strin
 	return reg.Consumer
 }
 
-func (m serviceMapper) getFQDN(ctx context.Context) (string, error) {
+func (m *serviceMapper) getFQDN(ctx context.Context) (string, error) {
 	globalConfig, err := m.globalConfigRepo.Get(ctx)
 	if err != nil {
 		return "", fmt.Errorf("failed to get global config: %w", err)
