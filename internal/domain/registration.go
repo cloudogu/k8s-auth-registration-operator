@@ -51,23 +51,23 @@ type RegistrationResult struct {
 
 func (rr RegistrationResult) GetRegistrationData() RegistrationData {
 	if rr.Protocol == ProtocolCAS && rr.CAS != nil {
-		return RegistrationData{"serviceId": []byte(rr.CAS.ServiceID)}
+		return RegistrationData{"cas_client_id": []byte(rr.CAS.ServiceID)}
 	}
 
 	if rr.Protocol == ProtocolOIDC && rr.OIDC != nil {
 		return RegistrationData{
-			"clientId":     []byte(rr.OIDC.ClientID),
-			"clientSecret": []byte(rr.OIDC.ClientSecret),
-			"issuerUrl":    []byte(rr.OIDC.IssuerURL),
+			"oidc_client_id":     []byte(rr.OIDC.ClientID),
+			"oidc_client_secret": []byte(rr.OIDC.ClientSecret),
+			"oidc_issuer_url":    []byte(rr.OIDC.IssuerURL),
 		}
 	}
 
 	if rr.Protocol == ProtocolOAuth && rr.OAuth != nil {
 		return RegistrationData{
-			"clientId":     []byte(rr.OAuth.ClientID),
-			"clientSecret": []byte(rr.OAuth.ClientSecret),
-			"authURL":      []byte(rr.OAuth.AuthURL),
-			"tokenURL":     []byte(rr.OAuth.TokenURL),
+			"oauth":               []byte(rr.OAuth.ClientID),
+			"oauth_client_secret": []byte(rr.OAuth.ClientSecret),
+			"oauth_auth_url":      []byte(rr.OAuth.AuthURL),
+			"oauth_token_url":     []byte(rr.OAuth.TokenURL),
 		}
 	}
 

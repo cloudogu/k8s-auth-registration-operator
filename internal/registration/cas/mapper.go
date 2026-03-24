@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"path"
 	"strings"
 
 	"github.com/cloudogu/k8s-auth-registration-operator/internal/domain"
@@ -174,7 +175,8 @@ func newSetParam(params map[string]string, sourceKey string) *StringCollection {
 }
 
 func logoutURLForRegistration(reg domain.Registration, fqdn string) string {
-	return fmt.Sprintf("https://%s/%s/%s", fqdn, reg.Consumer, strings.TrimSpace(reg.LogoutURL))
+	logoutPath := path.Join(strings.TrimSpace(reg.Consumer), strings.TrimSpace(reg.LogoutURL))
+	return fmt.Sprintf("https://%s/%s", fqdn, logoutPath)
 }
 
 func registrationServiceID(fqdn string, serviceName string) string {

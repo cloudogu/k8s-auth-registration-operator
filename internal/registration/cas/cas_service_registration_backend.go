@@ -131,12 +131,23 @@ func (b *CASServiceRegistrationBackend) resolveClientSecret(reg domain.Registrat
 		return "", nil
 	}
 
-	existingClientSecret := strings.TrimSpace(string(existingData["clientSecret"]))
+	existingClientSecret := strings.TrimSpace(string(existingData[clientSecretDataKey(reg.Protocol)]))
 	if existingClientSecret != "" {
 		return existingClientSecret, nil
 	}
 
 	return generateClientSecret()
+}
+
+func clientSecretDataKey(protocol domain.Protocol) string {
+	switch protocol {
+	case domain.ProtocolOIDC:
+		return "oidc_client_secret"
+	case domain.ProtocolOAuth:
+		return "oauth_client_secret"
+	default:
+		return ""
+	}
 }
 
 func generateClientSecret() (string, error) {

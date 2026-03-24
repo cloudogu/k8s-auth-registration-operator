@@ -19,7 +19,7 @@ func TestRegistrationResult_GetRegistrationData(t *testing.T) {
 		secretData := result.GetRegistrationData()
 
 		assert.Equal(t, RegistrationData{
-			"serviceId": []byte("service-id-1"),
+			"cas_client_id": []byte("service-id-1"),
 		}, secretData)
 	})
 
@@ -36,9 +36,9 @@ func TestRegistrationResult_GetRegistrationData(t *testing.T) {
 		secretData := result.GetRegistrationData()
 
 		assert.Equal(t, RegistrationData{
-			"clientId":     []byte("client-id"),
-			"clientSecret": []byte("client-secret"),
-			"issuerUrl":    []byte("https://issuer.example.com"),
+			"oidc_client_id":     []byte("client-id"),
+			"oidc_client_secret": []byte("client-secret"),
+			"oidc_issuer_url":    []byte("https://issuer.example.com"),
 		}, secretData)
 	})
 
@@ -56,10 +56,10 @@ func TestRegistrationResult_GetRegistrationData(t *testing.T) {
 		secretData := result.GetRegistrationData()
 
 		assert.Equal(t, RegistrationData{
-			"clientId":     []byte("oauth-client-id"),
-			"clientSecret": []byte("oauth-client-secret"),
-			"authURL":      []byte("https://auth.example.com"),
-			"tokenURL":     []byte("https://token.example.com"),
+			"oauth":               []byte("oauth-client-id"),
+			"oauth_client_secret": []byte("oauth-client-secret"),
+			"oauth_auth_url":      []byte("https://auth.example.com"),
+			"oauth_token_url":     []byte("https://token.example.com"),
 		}, secretData)
 	})
 
