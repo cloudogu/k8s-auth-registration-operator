@@ -440,7 +440,7 @@ func TestCASServiceRegistrationBackend_Delete(t *testing.T) {
 		err := backend.Delete(ctx, reg)
 
 		require.Error(t, err)
-		assert.ErrorContains(t, err, `Cas service for consumer "app" has no numeric id`)
+		assert.ErrorContains(t, err, `cas-service for consumer "app" has no numeric id`)
 	})
 
 	t.Run("deletes the matching service by numeric id", func(t *testing.T) {

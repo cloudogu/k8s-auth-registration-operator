@@ -114,7 +114,7 @@ func (b *CASServiceRegistrationBackend) Delete(ctx context.Context, reg domain.R
 	}
 
 	if existing.ID == 0 {
-		return fmt.Errorf("Cas service for consumer %q has no numeric id", reg.Consumer)
+		return fmt.Errorf("cas-service for consumer %q has no numeric id", reg.Consumer)
 	}
 
 	if err := b.client.DeleteService(ctx, existing.ID); err != nil {

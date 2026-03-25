@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 )
@@ -151,17 +152,15 @@ func (c *Client) do(req *http.Request, expectedStatusCodes ...int) ([]byte, erro
 	if err != nil {
 		return nil, fmt.Errorf("request %s %s failed: %w", req.Method, req.URL.String(), err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read %s %s response: %w", req.Method, req.URL.String(), err)
 	}
 
-	for _, code := range expectedStatusCodes {
-		if resp.StatusCode == code {
-			return body, nil
-		}
+	if slices.Contains(expectedStatusCodes, resp.StatusCode) {
+		return body, nil
 	}
 
 	return nil, &apiError{
