@@ -69,9 +69,9 @@ func (_c *mockServiceRegistrationBackend_Delete_Call) RunAndReturn(run func(cont
 	return _c
 }
 
-// Upsert provides a mock function with given fields: ctx, registration
-func (_m *mockServiceRegistrationBackend) Upsert(ctx context.Context, registration domain.Registration) (domain.RegistrationResult, error) {
-	ret := _m.Called(ctx, registration)
+// Upsert provides a mock function with given fields: ctx, registration, existingData
+func (_m *mockServiceRegistrationBackend) Upsert(ctx context.Context, registration domain.Registration, existingData domain.RegistrationData) (domain.RegistrationResult, error) {
+	ret := _m.Called(ctx, registration, existingData)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Upsert")
@@ -79,17 +79,17 @@ func (_m *mockServiceRegistrationBackend) Upsert(ctx context.Context, registrati
 
 	var r0 domain.RegistrationResult
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, domain.Registration) (domain.RegistrationResult, error)); ok {
-		return rf(ctx, registration)
+	if rf, ok := ret.Get(0).(func(context.Context, domain.Registration, domain.RegistrationData) (domain.RegistrationResult, error)); ok {
+		return rf(ctx, registration, existingData)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, domain.Registration) domain.RegistrationResult); ok {
-		r0 = rf(ctx, registration)
+	if rf, ok := ret.Get(0).(func(context.Context, domain.Registration, domain.RegistrationData) domain.RegistrationResult); ok {
+		r0 = rf(ctx, registration, existingData)
 	} else {
 		r0 = ret.Get(0).(domain.RegistrationResult)
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, domain.Registration) error); ok {
-		r1 = rf(ctx, registration)
+	if rf, ok := ret.Get(1).(func(context.Context, domain.Registration, domain.RegistrationData) error); ok {
+		r1 = rf(ctx, registration, existingData)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -105,13 +105,14 @@ type mockServiceRegistrationBackend_Upsert_Call struct {
 // Upsert is a helper method to define mock.On call
 //   - ctx context.Context
 //   - registration domain.Registration
-func (_e *mockServiceRegistrationBackend_Expecter) Upsert(ctx interface{}, registration interface{}) *mockServiceRegistrationBackend_Upsert_Call {
-	return &mockServiceRegistrationBackend_Upsert_Call{Call: _e.mock.On("Upsert", ctx, registration)}
+//   - existingData domain.RegistrationData
+func (_e *mockServiceRegistrationBackend_Expecter) Upsert(ctx interface{}, registration interface{}, existingData interface{}) *mockServiceRegistrationBackend_Upsert_Call {
+	return &mockServiceRegistrationBackend_Upsert_Call{Call: _e.mock.On("Upsert", ctx, registration, existingData)}
 }
 
-func (_c *mockServiceRegistrationBackend_Upsert_Call) Run(run func(ctx context.Context, registration domain.Registration)) *mockServiceRegistrationBackend_Upsert_Call {
+func (_c *mockServiceRegistrationBackend_Upsert_Call) Run(run func(ctx context.Context, registration domain.Registration, existingData domain.RegistrationData)) *mockServiceRegistrationBackend_Upsert_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(domain.Registration))
+		run(args[0].(context.Context), args[1].(domain.Registration), args[2].(domain.RegistrationData))
 	})
 	return _c
 }
@@ -121,7 +122,7 @@ func (_c *mockServiceRegistrationBackend_Upsert_Call) Return(_a0 domain.Registra
 	return _c
 }
 
-func (_c *mockServiceRegistrationBackend_Upsert_Call) RunAndReturn(run func(context.Context, domain.Registration) (domain.RegistrationResult, error)) *mockServiceRegistrationBackend_Upsert_Call {
+func (_c *mockServiceRegistrationBackend_Upsert_Call) RunAndReturn(run func(context.Context, domain.Registration, domain.RegistrationData) (domain.RegistrationResult, error)) *mockServiceRegistrationBackend_Upsert_Call {
 	_c.Call.Return(run)
 	return _c
 }

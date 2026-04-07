@@ -118,6 +118,10 @@ node('docker') {
                 k3d.helm("install ${repositoryName} ${helmChartDir}")
             }
 
+            stage('Create dummy CAS secret') {
+                k3d.kubectl("--namespace default create secret generic lop-idp-cas-actuator-auth --from-literal=username=dummy-user --from-literal=password=dummy-password")
+            }
+
             stage('Wait for Ready Rollout') {
                 k3d.kubectl("--namespace default wait --for=condition=Ready pods --all")
             }

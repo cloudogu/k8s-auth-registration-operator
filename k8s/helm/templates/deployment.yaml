@@ -41,6 +41,20 @@ spec:
             valueFrom:
               fieldRef:
                 fieldPath: metadata.namespace
+          - name: CAS_BASE_URL
+            value: {{ required "manager.cas.baseUrl must be set" .Values.manager.cas.baseUrl | quote }}
+          - name: CAS_TIMEOUT
+            value: {{ .Values.manager.cas.timeout | default "10s" | quote }}
+          - name: CAS_USERNAME
+            valueFrom:
+              secretKeyRef:
+                name: {{ required "manager.cas.existingSecret.name must be set" .Values.manager.cas.authSecret.name | quote }}
+                key: {{ .Values.manager.cas.authSecret.usernameKey | default "username" | quote }}
+          - name: CAS_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: {{ required "manager.cas.existingSecret.name must be set" .Values.manager.cas.authSecret.name | quote }}
+                key: {{ .Values.manager.cas.authSecret.passwordKey | default "password" | quote }}
 
 
           image: "{{ .Values.manager.image.registry }}/{{ .Values.manager.image.repository }}:{{ .Values.manager.image.tag | default .Chart.AppVersion }}"
