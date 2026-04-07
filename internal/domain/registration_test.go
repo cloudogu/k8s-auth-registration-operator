@@ -104,6 +104,44 @@ func TestRegistrationResult_GetRegistrationData(t *testing.T) {
 	})
 }
 
+func TestRegistrationData_ClientSecret(t *testing.T) {
+	t.Run("should return trimmed OIDC client secret", func(t *testing.T) {
+		data := RegistrationData{
+			"oidc_client_secret": []byte("  oidc-secret  "),
+		}
+
+		secret, ok := data.ClientSecret(ProtocolOIDC)
+
+		assert.True(t, ok)
+		assert.Equal(t, "oidc-secret", secret)
+	})
+
+	t.Run("should return trimmed OAuth client secret", func(t *testing.T) {
+		data := RegistrationData{
+			"oauth_client_secret": []byte("  oauth-secret  "),
+		}
+
+		secret, ok := data.ClientSecret(ProtocolOAuth)
+
+		assert.True(t, ok)
+		assert.Equal(t, "oauth-secret", secret)
+	})
+
+	t.Run("should report unsupported protocols", func(t *testing.T) {
+		data := RegistrationData{
+			"oidc_client_secret": []byte("oidc-secret"),
+		}
+
+		secret, ok := data.ClientSecret(ProtocolCAS)
+		assert.False(t, ok)
+		assert.Empty(t, secret)
+
+		secret, ok = data.ClientSecret(Protocol("UNKNOWN"))
+		assert.False(t, ok)
+		assert.Empty(t, secret)
+	})
+}
+
 func TestFromAuthRegistration(t *testing.T) {
 	t.Run("should map auth registration with logout URL", func(t *testing.T) {
 		logoutURL := "https://logout.example.com"

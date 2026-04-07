@@ -1,6 +1,8 @@
 package domain
 
 import (
+	"strings"
+
 	authregistrationv1 "github.com/cloudogu/k8s-auth-registration-lib/api/v1"
 )
 
@@ -21,6 +23,17 @@ type Registration struct {
 }
 
 type RegistrationData map[string][]byte
+
+func (rd RegistrationData) ClientSecret(protocol Protocol) (string, bool) {
+	switch protocol {
+	case ProtocolOIDC:
+		return strings.TrimSpace(string(rd["oidc_client_secret"])), true
+	case ProtocolOAuth:
+		return strings.TrimSpace(string(rd["oauth_client_secret"])), true
+	default:
+		return "", false
+	}
+}
 
 type OIDCResult struct {
 	ClientID     string

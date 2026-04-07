@@ -7,6 +7,8 @@ import (
 )
 
 const (
+	javaCollectionWrapperLength = 2
+	classJSONKey                = "@class"
 	casRegisteredServiceClass   = "org.apereo.cas.services.CasRegisteredService"
 	oidcRegisteredServiceClass  = "org.apereo.cas.services.OidcRegisteredService"
 	oauthRegisteredServiceClass = "org.apereo.cas.support.oauth.services.OAuthRegisteredService"
@@ -20,8 +22,8 @@ const (
 // authentication service provide mechanism, f. i. OIDC.
 //
 // see also
-//  - https://apereo.github.io/cas/7.3.x/authentication/OIDC-Authentication-Clients.html
-//  - https://apereo.github.io/cas/7.3.x/authentication/OAuth-Authentication-Clients.html
+//   - https://apereo.github.io/cas/7.3.x/authentication/OIDC-Authentication-Clients.html
+//   - https://apereo.github.io/cas/7.3.x/authentication/OAuth-Authentication-Clients.html
 type RegisteredService struct {
 	// Class contains the CAS-specific Java class representing this authentication entity.
 	Class        string `json:"@class"`
@@ -70,7 +72,7 @@ func NewRegisteredServiceProperties() *RegisteredServiceProperties {
 
 func (p RegisteredServiceProperties) MarshalJSON() ([]byte, error) {
 	payload := map[string]any{
-		"@class": p.Class,
+		classJSONKey: p.Class,
 	}
 	for key, value := range p.Entries {
 		payload[key] = value
@@ -89,11 +91,11 @@ func (p *RegisteredServiceProperties) UnmarshalJSON(data []byte) error {
 		Entries: map[string]RegisteredServiceProperty{},
 	}
 
-	if class, ok := raw["@class"]; ok {
+	if class, ok := raw[classJSONKey]; ok {
 		if err := json.Unmarshal(class, &props.Class); err != nil {
 			return err
 		}
-		delete(raw, "@class")
+		delete(raw, classJSONKey)
 	}
 
 	for key, value := range raw {
@@ -160,7 +162,8 @@ func (c *StringCollection) UnmarshalJSON(data []byte) error {
 	}
 
 	var wrapper []json.RawMessage
-	if err := json.Unmarshal(data, &wrapper); err == nil && len(wrapper) == 2 {
+	// CAS encodes Java collections as [className, values].
+	if err := json.Unmarshal(data, &wrapper); err == nil && len(wrapper) == javaCollectionWrapperLength {
 		var class string
 		if err := json.Unmarshal(wrapper[0], &class); err == nil {
 			var values []string
@@ -190,7 +193,8 @@ func (l *registeredServicesList) UnmarshalJSON(data []byte) error {
 	}
 
 	var wrapper []json.RawMessage
-	if err := json.Unmarshal(data, &wrapper); err == nil && len(wrapper) == 2 {
+	// CAS encodes Java collections as [className, values].
+	if err := json.Unmarshal(data, &wrapper); err == nil && len(wrapper) == javaCollectionWrapperLength {
 		var class string
 		if err := json.Unmarshal(wrapper[0], &class); err == nil {
 			return json.Unmarshal(wrapper[1], (*[]RegisteredService)(l))

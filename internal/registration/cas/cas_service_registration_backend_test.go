@@ -512,6 +512,19 @@ func TestCASServiceRegistrationBackendResolveClientSecret(t *testing.T) {
 		require.NoError(t, err)
 		assert.Len(t, secret, 43)
 	})
+
+	t.Run("returns error for unsupported protocols", func(t *testing.T) {
+		backend := &CASServiceRegistrationBackend{}
+
+		secret, err := backend.resolveClientSecret(
+			domain.Registration{Protocol: domain.Protocol("UNKNOWN")},
+			domain.RegistrationData{},
+		)
+
+		require.Error(t, err)
+		assert.Empty(t, secret)
+		assert.ErrorContains(t, err, `unsupported protocol "UNKNOWN"`)
+	})
 }
 
 func TestGenerateClientSecret(t *testing.T) {

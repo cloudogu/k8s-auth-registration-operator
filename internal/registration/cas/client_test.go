@@ -50,6 +50,13 @@ func TestNewClientRejectsInvalidConfig(t *testing.T) {
 	})
 
 	t.Run("uses default timeout and trims trailing slash from base URL", func(t *testing.T) {
+		previousTimeout := defaultClientTimeout
+		t.Cleanup(func() {
+			defaultClientTimeout = previousTimeout
+		})
+
+		defaultClientTimeout = 7 * time.Second
+
 		client, err := NewClient(ClientConfig{
 			BaseURL:  "https://cas.example.com/cas/",
 			Username: "cas-user",
@@ -60,7 +67,7 @@ func TestNewClientRejectsInvalidConfig(t *testing.T) {
 		require.NotNil(t, client)
 		assert.Equal(t, "https://cas.example.com/cas", client.BaseURL())
 		require.NotNil(t, client.httpClient)
-		assert.Equal(t, 10*time.Second, client.httpClient.Timeout)
+		assert.Equal(t, 7*time.Second, client.httpClient.Timeout)
 	})
 
 	t.Run("rejects invalid base URL", func(t *testing.T) {
@@ -141,6 +148,21 @@ func TestClientListServicesSupportsObjectPayload(t *testing.T) {
 func TestClientListServicesReturnsDecodeErrorForInvalidJSON(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"services":`))
+	}))
+	defer server.Close()
+
+	client := newClientForHTTPServerTest(t, server)
+
+	services, err := client.ListServices(context.Background())
+
+	require.Error(t, err)
+	assert.Nil(t, services)
+	assert.ErrorContains(t, err, "failed to decode list services response")
+}
+
+func TestClientListServicesReturnsDecodeErrorForEmptyBody(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
 	}))
 	defer server.Close()
 

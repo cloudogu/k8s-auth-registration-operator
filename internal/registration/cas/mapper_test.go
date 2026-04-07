@@ -214,9 +214,15 @@ func TestServiceMapperHelperFunctions(t *testing.T) {
 		assert.Equal(t, int64(55), serviceId(&RegisteredService{ID: 55}))
 		assert.Equal(t, fmt.Sprintf("%x", sha256.Sum256([]byte("plain-secret"))), hashClientSecret("plain-secret"))
 		assert.Equal(t, "dev1[.]k3ces[.]localdomain", escapeDots("dev1.k3ces.localdomain"))
-		assert.Equal(t, "oidc_client_secret", clientSecretDataKey(domain.ProtocolOIDC))
-		assert.Equal(t, "oauth_client_secret", clientSecretDataKey(domain.ProtocolOAuth))
-		assert.Equal(t, "", clientSecretDataKey(domain.ProtocolCAS))
+		oidcSecret, oidcOK := domain.RegistrationData{"oidc_client_secret": []byte("oidc-secret")}.ClientSecret(domain.ProtocolOIDC)
+		assert.True(t, oidcOK)
+		assert.Equal(t, "oidc-secret", oidcSecret)
+		oauthSecret, oauthOK := domain.RegistrationData{"oauth_client_secret": []byte("oauth-secret")}.ClientSecret(domain.ProtocolOAuth)
+		assert.True(t, oauthOK)
+		assert.Equal(t, "oauth-secret", oauthSecret)
+		casSecret, casOK := domain.RegistrationData{"oidc_client_secret": []byte("oidc-secret")}.ClientSecret(domain.ProtocolCAS)
+		assert.False(t, casOK)
+		assert.Equal(t, "", casSecret)
 	})
 
 	t.Run("getFQDN returns missing key errors", func(t *testing.T) {

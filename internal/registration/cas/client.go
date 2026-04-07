@@ -15,6 +15,8 @@ import (
 
 const registeredServicesPath = "/actuator/registeredServices"
 
+var defaultClientTimeout = 10 * time.Second
+
 type ClientConfig struct {
 	BaseURL  string
 	Username string
@@ -23,19 +25,17 @@ type ClientConfig struct {
 }
 
 type Client struct {
-	baseURL    string
-	username   string
-	password   string
+	cfg        ClientConfig
 	httpClient *http.Client
 }
 
 func NewClient(cfg ClientConfig, httpClient *http.Client) (*Client, error) {
-	baseURL := strings.TrimRight(strings.TrimSpace(cfg.BaseURL), "/")
-	if baseURL == "" {
+	cfg.BaseURL = strings.TrimRight(strings.TrimSpace(cfg.BaseURL), "/")
+	if cfg.BaseURL == "" {
 		return nil, fmt.Errorf("base URL must not be empty")
 	}
 
-	if _, err := url.ParseRequestURI(baseURL); err != nil {
+	if _, err := url.ParseRequestURI(cfg.BaseURL); err != nil {
 		return nil, fmt.Errorf("invalid base URL %q: %w", cfg.BaseURL, err)
 	}
 
@@ -49,25 +49,23 @@ func NewClient(cfg ClientConfig, httpClient *http.Client) (*Client, error) {
 	if httpClient == nil {
 		timeout := cfg.Timeout
 		if timeout <= 0 {
-			timeout = 10 * time.Second
+			timeout = defaultClientTimeout
 		}
 		httpClient = &http.Client{Timeout: timeout}
 	}
 
 	return &Client{
-		baseURL:    baseURL,
-		username:   cfg.Username,
-		password:   cfg.Password,
+		cfg:        cfg,
 		httpClient: httpClient,
 	}, nil
 }
 
 func (c *Client) BaseURL() string {
-	return c.baseURL
+	return c.cfg.BaseURL
 }
 
 func (c *Client) ListServices(ctx context.Context) ([]RegisteredService, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+registeredServicesPath, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.cfg.BaseURL+registeredServicesPath, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -75,10 +73,6 @@ func (c *Client) ListServices(ctx context.Context) ([]RegisteredService, error) 
 	body, err := c.do(req, http.StatusOK)
 	if err != nil {
 		return nil, err
-	}
-
-	if len(body) == 0 {
-		return nil, nil
 	}
 
 	var services registeredServicesList
@@ -98,7 +92,7 @@ func (c *Client) UpdateService(ctx context.Context, service RegisteredService) (
 }
 
 func (c *Client) DeleteService(ctx context.Context, id int64) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, fmt.Sprintf("%s%s/%d", c.baseURL, registeredServicesPath, id), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, fmt.Sprintf("%s%s/%d", c.cfg.BaseURL, registeredServicesPath, id), nil)
 	if err != nil {
 		return err
 	}
@@ -121,7 +115,7 @@ func (c *Client) writeService(ctx context.Context, method string, service Regist
 		return RegisteredService{}, fmt.Errorf("failed to encode %s payload: %w", strings.ToLower(method), err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+registeredServicesPath, bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(ctx, method, c.cfg.BaseURL+registeredServicesPath, bytes.NewReader(payload))
 	if err != nil {
 		return RegisteredService{}, err
 	}
@@ -145,7 +139,7 @@ func (c *Client) writeService(ctx context.Context, method string, service Regist
 }
 
 func (c *Client) do(req *http.Request, expectedStatusCodes ...int) ([]byte, error) {
-	req.SetBasicAuth(c.username, c.password)
+	req.SetBasicAuth(c.cfg.Username, c.cfg.Password)
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := c.httpClient.Do(req)
