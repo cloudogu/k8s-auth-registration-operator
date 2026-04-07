@@ -40,10 +40,14 @@ type OperatorConfig struct {
 }
 
 type CasConfig struct {
+	// BaseURL contains the URL to the CAS component service including schema, port, and context path
 	BaseURL  string
+	// Username contains the basic auth username to access the registeredServices endpoint.
 	Username string
+	// Password contains the basic auth password to access the registeredServices endpoint.
 	Password string
-	Timeout  time.Duration
+	// Timeout limits the CAS request time. Defaults to 10 seconds.
+	Timeout time.Duration
 }
 
 // NewOperatorConfig creates a new operator config by reading values from the environment variables
@@ -104,22 +108,22 @@ func GetNamespace() (string, error) {
 func getCASConfig() (CasConfig, error) {
 	baseURL, err := getEnvVar(casBaseURLEnvVar)
 	if err != nil {
-		return CasConfig{}, fmt.Errorf("failed to get env var [%s]: %w", casBaseURLEnvVar, err)
+		return CasConfig{}, err
 	}
 
 	username, err := getEnvVar(casUsernameEnvVar)
 	if err != nil {
-		return CasConfig{}, fmt.Errorf("failed to get env var [%s]: %w", casUsernameEnvVar, err)
+		return CasConfig{}, err
 	}
 
 	password, err := getEnvVar(casPasswordEnvVar)
 	if err != nil {
-		return CasConfig{}, fmt.Errorf("failed to get env var [%s]: %w", casPasswordEnvVar, err)
+		return CasConfig{}, err
 	}
 
 	timeout, err := getEnvDuration(casTimeoutEnvVar, defaultCASTimeout)
 	if err != nil {
-		return CasConfig{}, fmt.Errorf("failed to parse env var [%s]: %w", casTimeoutEnvVar, err)
+		return CasConfig{}, err
 	}
 
 	return CasConfig{
@@ -146,7 +150,7 @@ func getEnvDuration(name string, defaultValue time.Duration) (time.Duration, err
 
 	duration, err := time.ParseDuration(value)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("failed to parse env var [%s] as duration: %w", name, err)
 	}
 
 	return duration, nil

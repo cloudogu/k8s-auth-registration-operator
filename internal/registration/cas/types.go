@@ -16,22 +16,44 @@ const (
 	servicePropertyClass        = "org.apereo.cas.services.DefaultRegisteredServiceProperty"
 )
 
+// RegisteredService represents an enable authentication web service as registered in CAS, independent of the used
+// authentication service provide mechanism, f. i. OIDC.
+//
+// see also
+//  - https://apereo.github.io/cas/7.3.x/authentication/OIDC-Authentication-Clients.html
+//  - https://apereo.github.io/cas/7.3.x/authentication/OAuth-Authentication-Clients.html
 type RegisteredService struct {
+	// Class contains the CAS-specific Java class representing this authentication entity.
 	Class        string `json:"@class"`
 	ID           int64  `json:"id,omitempty"`
 	TemplateName string `json:"templateName,omitempty"`
 	// Name is required for services managed via the CAS registeredServices API.
 	Name string `json:"name,omitempty"`
 	// ServiceID is required for services managed via the CAS registeredServices API.
-	ServiceID              string                       `json:"serviceId,omitempty"`
-	LogoutURL              string                       `json:"logoutUrl,omitempty"`
-	Properties             *RegisteredServiceProperties `json:"properties,omitempty"`
-	ClientID               string                       `json:"clientId,omitempty"`
-	ClientSecret           string                       `json:"clientSecret,omitempty"`
-	Scopes                 *StringCollection            `json:"scopes,omitempty"`
-	SupportedGrantTypes    *StringCollection            `json:"supportedGrantTypes,omitempty"`
-	SupportedResponseTypes *StringCollection            `json:"supportedResponseTypes,omitempty"`
-	Audience               *StringCollection            `json:"audience,omitempty"`
+	ServiceID string `json:"serviceId,omitempty"`
+	// LogoutURL contains the URL under to which CAS sends back-channel logout requests.
+	LogoutURL string `json:"logoutUrl,omitempty"`
+	// Properties may contain arbitrary control properties specific to the used authentication service provide mechanism.
+	Properties *RegisteredServiceProperties `json:"properties,omitempty"`
+	// ClientID contains the identifier for this client application.
+	ClientID string `json:"clientId,omitempty"`
+	// ClientSecret contains the secret for this client application. The client secret received from the service will be
+	// URL decoded before being compared to the secret in the CAS service definition.
+	ClientSecret string `json:"clientSecret,omitempty"`
+	// Scopes contain collection of authorized scopes for this service that act as a filter for the requested scopes in
+	// the authorization request
+	Scopes *StringCollection `json:"scopes,omitempty"`
+	// SupportedGrantTypes contain an optional collection of supported grant types for this service.
+	//
+	// See also https://apereo.github.io/cas/7.3.x/authentication/OAuth-Authentication-Clients-ResponsesGrants.html
+	SupportedGrantTypes *StringCollection `json:"supportedGrantTypes,omitempty"`
+	// SupportedResponseTypes contain an optional collection of supported response types for this service.
+	//
+	// See also https://apereo.github.io/cas/7.3.x/authentication/OAuth-Authentication-Clients-ResponsesGrants.html
+	SupportedResponseTypes *StringCollection `json:"supportedResponseTypes,omitempty"`
+	// Audience contains a collection of values that can control the aud field in JWT access tokens or ID tokens.
+	// If left undefined, the client ID will typically be used instead
+	Audience *StringCollection `json:"audience,omitempty"`
 }
 
 type RegisteredServiceProperties struct {
@@ -111,6 +133,7 @@ func NewRegisteredServiceProperty(values ...string) RegisteredServiceProperty {
 	}
 }
 
+// StringCollection associates a given slice of values to a Java collection class
 type StringCollection struct {
 	Class  string
 	Values []string
