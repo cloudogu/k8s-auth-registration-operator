@@ -62,10 +62,10 @@ func TestNewOperatorConfig(t *testing.T) {
 		// then
 		require.NoError(t, err)
 		assert.Equal(t, "ecosystem", actual.Namespace)
-		assert.Equal(t, "https://cas.example.com/cas", actual.Cas.BaseURL)
-		assert.Equal(t, "cas-user", actual.Cas.Username)
-		assert.Equal(t, "cas-password", actual.Cas.Password)
-		assert.Equal(t, 15*time.Second, actual.Cas.Timeout)
+		assert.Equal(t, "https://cas.example.com/cas", actual.CasConf.BaseURL)
+		assert.Equal(t, "cas-user", actual.CasConf.Username)
+		assert.Equal(t, "cas-password", actual.CasConf.Password)
+		assert.Equal(t, 15*time.Second, actual.CasConf.Timeout)
 		assert.NotNil(t, actual.ControllerOptions)
 	})
 
@@ -206,7 +206,7 @@ func TestGetCASConfig(t *testing.T) {
 		_, err := getCASConfig()
 
 		require.Error(t, err)
-		assert.ErrorContains(t, err, "failed to get env var [CAS_BASE_URL]")
+		assert.ErrorContains(t, err, "environment variable CAS_BASE_URL must be set")
 	})
 
 	t.Run("returns error when Cas username is missing", func(t *testing.T) {
@@ -218,7 +218,7 @@ func TestGetCASConfig(t *testing.T) {
 		_, err := getCASConfig()
 
 		require.Error(t, err)
-		assert.ErrorContains(t, err, "failed to get env var [CAS_USERNAME]")
+		assert.ErrorContains(t, err, "environment variable CAS_USERNAME must be set")
 	})
 
 	t.Run("returns error when Cas password is missing", func(t *testing.T) {
@@ -230,7 +230,7 @@ func TestGetCASConfig(t *testing.T) {
 		_, err := getCASConfig()
 
 		require.Error(t, err)
-		assert.ErrorContains(t, err, "failed to get env var [CAS_PASSWORD]")
+		assert.ErrorContains(t, err, "environment variable CAS_PASSWORD must be set")
 	})
 
 	t.Run("uses default timeout when CAS_TIMEOUT is not set", func(t *testing.T) {

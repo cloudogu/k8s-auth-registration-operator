@@ -33,15 +33,15 @@ func IsStageDevelopment() bool {
 type OperatorConfig struct {
 	// Namespace specifies the namespace that the operator is deployed to.
 	Namespace string
-	// Cas contains the connection settings for the Cas service registry API.
-	Cas CasConfig
+	// CasConf contains the connection settings for the Cas service registry API.
+	CasConf CasConfig
 	// ControllerOptions contains the options for the controller manager
 	ControllerOptions ctrl.Options
 }
 
 type CasConfig struct {
 	// BaseURL contains the URL to the CAS component service including schema, port, and context path
-	BaseURL  string
+	BaseURL string
 	// Username contains the basic auth username to access the registeredServices endpoint.
 	Username string
 	// Password contains the basic auth password to access the registeredServices endpoint.
@@ -69,7 +69,7 @@ func NewOperatorConfig(scheme *runtime.Scheme) (*OperatorConfig, error) {
 
 	return &OperatorConfig{
 		Namespace:         namespace,
-		Cas:               casConfig,
+		CasConf:           casConfig,
 		ControllerOptions: ctrlOptions,
 	}, nil
 }

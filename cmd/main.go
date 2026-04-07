@@ -73,10 +73,10 @@ func startManager(cfg *config.OperatorConfig) error {
 	globalConfigRepo := libRepository.NewGlobalConfigRepository(k8sClients.CoreV1().ConfigMaps(cfg.Namespace))
 
 	casClient, err := casregistration.NewClient(casregistration.ClientConfig{
-		BaseURL:  cfg.Cas.BaseURL,
-		Username: cfg.Cas.Username,
-		Password: cfg.Cas.Password,
-		Timeout:  cfg.Cas.Timeout,
+		BaseURL:  cfg.CasConf.BaseURL,
+		Username: cfg.CasConf.Username,
+		Password: cfg.CasConf.Password,
+		Timeout:  cfg.CasConf.Timeout,
 	}, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create Cas client: %w", err)
