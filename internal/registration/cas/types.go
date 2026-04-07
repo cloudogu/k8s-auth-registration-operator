@@ -156,23 +156,18 @@ func (c StringCollection) MarshalJSON() ([]byte, error) {
 }
 
 func (c *StringCollection) UnmarshalJSON(data []byte) error {
+	// Accept null to mirror omitted optional CAS collection fields.
 	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
 		*c = StringCollection{}
 		return nil
 	}
 
-	var wrapper []json.RawMessage
-	// CAS encodes Java collections as [className, values].
-	if err := json.Unmarshal(data, &wrapper); err == nil && len(wrapper) == javaCollectionWrapperLength {
-		var class string
-		if err := json.Unmarshal(wrapper[0], &class); err == nil {
-			var values []string
-			if err := json.Unmarshal(wrapper[1], &values); err != nil {
-				return err
-			}
-			*c = StringCollection{Class: class, Values: values}
-			return nil
-		}
+	// Prefer the CAS Java collection wrapper before falling back to a plain string array.
+	if wrapper, ok, err := unmarshalStringCollectionWrapper(data); err != nil {
+		return err
+	} else if ok {
+		*c = wrapper
+		return nil
 	}
 
 	var values []string
@@ -187,18 +182,18 @@ func (c *StringCollection) UnmarshalJSON(data []byte) error {
 type registeredServicesList []RegisteredService
 
 func (l *registeredServicesList) UnmarshalJSON(data []byte) error {
+	// Accept null to mirror empty responses from the CAS API.
 	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
 		*l = nil
 		return nil
 	}
 
-	var wrapper []json.RawMessage
-	// CAS encodes Java collections as [className, values].
-	if err := json.Unmarshal(data, &wrapper); err == nil && len(wrapper) == javaCollectionWrapperLength {
-		var class string
-		if err := json.Unmarshal(wrapper[0], &class); err == nil {
-			return json.Unmarshal(wrapper[1], (*[]RegisteredService)(l))
-		}
+	// Prefer the CAS Java collection wrapper before trying object or array payloads.
+	if services, ok, err := unmarshalRegisteredServicesWrapper(data); err != nil {
+		return err
+	} else if ok {
+		*l = services
+		return nil
 	}
 
 	type response struct {
@@ -214,6 +209,47 @@ func (l *registeredServicesList) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &direct); err != nil {
 		return err
 	}
+
 	*l = direct
 	return nil
+}
+
+func unmarshalStringCollectionWrapper(data []byte) (StringCollection, bool, error) {
+	var wrapper []json.RawMessage
+	// CAS encodes Java collections as [className, values].
+	if err := json.Unmarshal(data, &wrapper); err != nil || len(wrapper) != javaCollectionWrapperLength {
+		return StringCollection{}, false, nil
+	}
+
+	var class string
+	if err := json.Unmarshal(wrapper[0], &class); err != nil {
+		return StringCollection{}, false, nil
+	}
+
+	var values []string
+	if err := json.Unmarshal(wrapper[1], &values); err != nil {
+		return StringCollection{}, true, err
+	}
+
+	return StringCollection{Class: class, Values: values}, true, nil
+}
+
+func unmarshalRegisteredServicesWrapper(data []byte) ([]RegisteredService, bool, error) {
+	var wrapper []json.RawMessage
+	// CAS encodes Java collections as [className, values].
+	if err := json.Unmarshal(data, &wrapper); err != nil || len(wrapper) != javaCollectionWrapperLength {
+		return nil, false, nil
+	}
+
+	var class string
+	if err := json.Unmarshal(wrapper[0], &class); err != nil {
+		return nil, false, nil
+	}
+
+	var services []RegisteredService
+	if err := json.Unmarshal(wrapper[1], &services); err != nil {
+		return nil, true, err
+	}
+
+	return services, true, nil
 }
