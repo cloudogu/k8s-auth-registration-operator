@@ -11,7 +11,9 @@ import (
 
 	authregistrationv1 "github.com/cloudogu/k8s-auth-registration-lib/api/v1"
 	"github.com/cloudogu/k8s-auth-registration-operator/internal/config"
-	"github.com/cloudogu/k8s-auth-registration-operator/internal/registration"
+	casregistration "github.com/cloudogu/k8s-auth-registration-operator/internal/registration/cas"
+	libRepository "github.com/cloudogu/k8s-registry-lib/repository"
+	"k8s.io/client-go/kubernetes"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and startManager can make use of them.
@@ -58,12 +60,31 @@ func main() {
 }
 
 func startManager(cfg *config.OperatorConfig) error {
-	// TODO replace with real cas backend
-	serviceRegistrationBackend := &registration.NoOpServiceRegistrationBackend{}
-
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), cfg.ControllerOptions)
 	if err != nil {
 		return fmt.Errorf("failed to create manager: %w", err)
+	}
+
+	k8sClients, err := kubernetes.NewForConfig(mgr.GetConfig())
+	if err != nil {
+		return fmt.Errorf("failed to create k8s client set: %w", err)
+	}
+
+	globalConfigRepo := libRepository.NewGlobalConfigRepository(k8sClients.CoreV1().ConfigMaps(cfg.Namespace))
+
+	casClient, err := casregistration.NewClient(casregistration.ClientConfig{
+		BaseURL:  cfg.CasConf.BaseURL,
+		Username: cfg.CasConf.Username,
+		Password: cfg.CasConf.Password,
+		Timeout:  cfg.CasConf.Timeout,
+	}, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create Cas client: %w", err)
+	}
+
+	serviceRegistrationBackend, err := casregistration.NewCASServiceRegistrationBackend(globalConfigRepo, casClient)
+	if err != nil {
+		return fmt.Errorf("failed to create Cas backend: %w", err)
 	}
 
 	authRegCtrl := controller.NewAuthRegistrationController(mgr.GetClient(), mgr.GetScheme(), serviceRegistrationBackend)

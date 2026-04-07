@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestRegistrationResult_GetSecretData(t *testing.T) {
+func TestRegistrationResult_GetRegistrationData(t *testing.T) {
 	t.Run("should return CAS secret data", func(t *testing.T) {
 		result := RegistrationResult{
 			Protocol: ProtocolCAS,
@@ -16,10 +16,10 @@ func TestRegistrationResult_GetSecretData(t *testing.T) {
 			},
 		}
 
-		secretData := result.GetSecretData()
+		secretData := result.GetRegistrationData()
 
-		assert.Equal(t, map[string][]byte{
-			"serviceId": []byte("service-id-1"),
+		assert.Equal(t, RegistrationData{
+			"cas_client_id": []byte("service-id-1"),
 		}, secretData)
 	})
 
@@ -33,12 +33,12 @@ func TestRegistrationResult_GetSecretData(t *testing.T) {
 			},
 		}
 
-		secretData := result.GetSecretData()
+		secretData := result.GetRegistrationData()
 
-		assert.Equal(t, map[string][]byte{
-			"clientId":     []byte("client-id"),
-			"clientSecret": []byte("client-secret"),
-			"issuerUrl":    []byte("https://issuer.example.com"),
+		assert.Equal(t, RegistrationData{
+			"oidc_client_id":     []byte("client-id"),
+			"oidc_client_secret": []byte("client-secret"),
+			"oidc_issuer_url":    []byte("https://issuer.example.com"),
 		}, secretData)
 	})
 
@@ -53,13 +53,13 @@ func TestRegistrationResult_GetSecretData(t *testing.T) {
 			},
 		}
 
-		secretData := result.GetSecretData()
+		secretData := result.GetRegistrationData()
 
-		assert.Equal(t, map[string][]byte{
-			"clientId":     []byte("oauth-client-id"),
-			"clientSecret": []byte("oauth-client-secret"),
-			"authURL":      []byte("https://auth.example.com"),
-			"tokenURL":     []byte("https://token.example.com"),
+		assert.Equal(t, RegistrationData{
+			"oauth":               []byte("oauth-client-id"),
+			"oauth_client_secret": []byte("oauth-client-secret"),
+			"oauth_auth_url":      []byte("https://auth.example.com"),
+			"oauth_token_url":     []byte("https://token.example.com"),
 		}, secretData)
 	})
 
@@ -68,7 +68,7 @@ func TestRegistrationResult_GetSecretData(t *testing.T) {
 			Protocol: Protocol("UNKNOWN"),
 		}
 
-		secretData := result.GetSecretData()
+		secretData := result.GetRegistrationData()
 
 		assert.Empty(t, secretData)
 	})
@@ -78,7 +78,7 @@ func TestRegistrationResult_GetSecretData(t *testing.T) {
 			Protocol: ProtocolCAS,
 		}
 
-		secretData := result.GetSecretData()
+		secretData := result.GetRegistrationData()
 
 		assert.Empty(t, secretData)
 	})
@@ -88,7 +88,7 @@ func TestRegistrationResult_GetSecretData(t *testing.T) {
 			Protocol: ProtocolOIDC,
 		}
 
-		secretData := result.GetSecretData()
+		secretData := result.GetRegistrationData()
 
 		assert.Empty(t, secretData)
 	})
@@ -98,9 +98,47 @@ func TestRegistrationResult_GetSecretData(t *testing.T) {
 			Protocol: ProtocolOAuth,
 		}
 
-		secretData := result.GetSecretData()
+		secretData := result.GetRegistrationData()
 
 		assert.Empty(t, secretData)
+	})
+}
+
+func TestRegistrationData_ClientSecret(t *testing.T) {
+	t.Run("should return trimmed OIDC client secret", func(t *testing.T) {
+		data := RegistrationData{
+			"oidc_client_secret": []byte("  oidc-secret  "),
+		}
+
+		secret, ok := data.ClientSecret(ProtocolOIDC)
+
+		assert.True(t, ok)
+		assert.Equal(t, "oidc-secret", secret)
+	})
+
+	t.Run("should return trimmed OAuth client secret", func(t *testing.T) {
+		data := RegistrationData{
+			"oauth_client_secret": []byte("  oauth-secret  "),
+		}
+
+		secret, ok := data.ClientSecret(ProtocolOAuth)
+
+		assert.True(t, ok)
+		assert.Equal(t, "oauth-secret", secret)
+	})
+
+	t.Run("should report unsupported protocols", func(t *testing.T) {
+		data := RegistrationData{
+			"oidc_client_secret": []byte("oidc-secret"),
+		}
+
+		secret, ok := data.ClientSecret(ProtocolCAS)
+		assert.False(t, ok)
+		assert.Empty(t, secret)
+
+		secret, ok = data.ClientSecret(Protocol("UNKNOWN"))
+		assert.False(t, ok)
+		assert.Empty(t, secret)
 	})
 }
 

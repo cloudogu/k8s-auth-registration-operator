@@ -33,9 +33,9 @@ func TestBuildDesiredSecret(t *testing.T) {
 		assert.Equal(t, "ecosystem", secret.Namespace)
 		assert.Equal(t, corev1.SecretTypeOpaque, secret.Type)
 		assert.Equal(t, "my-auth-registration", secret.Labels[authRegistrationNameLabelKey])
-		assert.Equal(t, []byte("oidc-client-id"), secret.Data["clientId"])
-		assert.Equal(t, []byte("oidc-client-secret"), secret.Data["clientSecret"])
-		assert.Equal(t, []byte("https://issuer.example"), secret.Data["issuerUrl"])
+		assert.Equal(t, []byte("oidc-client-id"), secret.Data["oidc_client_id"])
+		assert.Equal(t, []byte("oidc-client-secret"), secret.Data["oidc_client_secret"])
+		assert.Equal(t, []byte("https://issuer.example"), secret.Data["oidc_issuer_url"])
 	})
 }
 
@@ -55,7 +55,7 @@ func TestAuthRegistrationSecretReconciler_Reconcile_CreatePaths(t *testing.T) {
 		assert.Equal(t, 0, recorder.updateCalls)
 
 		secret := getSecretFromClientForTest(t, c, types.NamespacedName{Name: "target-secret", Namespace: "ecosystem"})
-		assert.Equal(t, []byte("oidc-client-id"), secret.Data["clientId"])
+		assert.Equal(t, []byte("oidc-client-id"), secret.Data["oidc_client_id"])
 
 		controllerRef := metav1.GetControllerOf(secret)
 		require.NotNil(t, controllerRef)
@@ -156,8 +156,11 @@ func TestAuthRegistrationSecretReconciler_Reconcile_UpdatePaths(t *testing.T) {
 			},
 			Type: corev1.SecretTypeTLS,
 			Data: map[string][]byte{
-				"keep-data": []byte("keep-value"),
-				"clientId":  []byte("old-client-id"),
+				"keep-data":      []byte("keep-value"),
+				"oidc_client_id": []byte("old-client-id"),
+				"clientId":       []byte("legacy-client-id"),
+				"clientSecret":   []byte("legacy-client-secret"),
+				"issuerUrl":      []byte("https://legacy-issuer.example"),
 			},
 		}
 		reconciler, c := newSecretReconcilerForTest(t, scheme, recorder, existingSecret)
@@ -177,9 +180,9 @@ func TestAuthRegistrationSecretReconciler_Reconcile_UpdatePaths(t *testing.T) {
 		assert.Equal(t, "auth-reg", secret.Labels[authRegistrationNameLabelKey])
 		assert.Equal(t, "keep-value", secret.Annotations["keep-annotation"])
 		assert.Equal(t, []byte("keep-value"), secret.Data["keep-data"])
-		assert.Equal(t, []byte("oidc-client-id"), secret.Data["clientId"])
-		assert.Equal(t, []byte("oidc-client-secret"), secret.Data["clientSecret"])
-		assert.Equal(t, []byte("https://issuer.example"), secret.Data["issuerUrl"])
+		assert.Equal(t, []byte("oidc-client-id"), secret.Data["oidc_client_id"])
+		assert.Equal(t, []byte("oidc-client-secret"), secret.Data["oidc_client_secret"])
+		assert.Equal(t, []byte("https://issuer.example"), secret.Data["oidc_issuer_url"])
 	})
 
 	t.Run("initializes nil label, annotation and data maps during update", func(t *testing.T) {
@@ -207,7 +210,7 @@ func TestAuthRegistrationSecretReconciler_Reconcile_UpdatePaths(t *testing.T) {
 		assert.Empty(t, secret.Annotations)
 		require.NotNil(t, secret.Data)
 		assert.Equal(t, "auth-reg", secret.Labels[authRegistrationNameLabelKey])
-		assert.Equal(t, []byte("oidc-client-id"), secret.Data["clientId"])
+		assert.Equal(t, []byte("oidc-client-id"), secret.Data["oidc_client_id"])
 	})
 
 	t.Run("does not issue update when existing secret already matches desired state", func(t *testing.T) {

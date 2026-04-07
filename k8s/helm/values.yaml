@@ -6,11 +6,18 @@ manager:
   image:
     registry: docker.io
     repository: cloudogu/k8s-auth-registration-operator
-    tag: 0.1.0
+    tag: 1.0.0
   imagePullPolicy: IfNotPresent
   env:
     logLevel: info
     stage: production
+  cas:
+    baseUrl: "http://lop-idp-cas:8080/cas/"
+    timeout: 10s
+    authSecret:
+      name: "lop-idp-cas-actuator-auth"
+      usernameKey: username
+      passwordKey: password
   resourceLimits:
     memory: 128M
   resourceRequests:

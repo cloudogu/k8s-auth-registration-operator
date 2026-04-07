@@ -32,7 +32,7 @@ func TestAuthRegistrationReconciler_HandleReconcile(t *testing.T) {
 		registrationResult := newOIDCRegistrationResultForControllerTest()
 
 		mockServiceRegistrationBackend.EXPECT().
-			Upsert(mock.Anything, matchRegistration(domain.FromAuthRegistration(authRegistration))).
+			Upsert(mock.Anything, matchRegistration(domain.FromAuthRegistration(authRegistration)), mock.Anything).
 			Return(registrationResult, nil).
 			Once()
 		mockStatusPatcher.EXPECT().
@@ -67,7 +67,7 @@ func TestAuthRegistrationReconciler_HandleReconcile(t *testing.T) {
 		registrationResult := newOIDCRegistrationResultForControllerTest()
 
 		mockServiceRegistrationBackend.EXPECT().
-			Upsert(mock.Anything, matchRegistration(domain.FromAuthRegistration(authRegistration))).
+			Upsert(mock.Anything, matchRegistration(domain.FromAuthRegistration(authRegistration)), mock.Anything).
 			Return(registrationResult, nil).
 			Once()
 		mockStatusPatcher.EXPECT().
@@ -112,7 +112,7 @@ func TestAuthRegistrationReconciler_HandleReconcile(t *testing.T) {
 		registrationResult := newOIDCRegistrationResultForControllerTest()
 
 		mockServiceRegistrationBackend.EXPECT().
-			Upsert(mock.Anything, matchRegistration(domain.FromAuthRegistration(authRegistration))).
+			Upsert(mock.Anything, matchRegistration(domain.FromAuthRegistration(authRegistration)), mock.Anything).
 			Return(registrationResult, nil).
 			Once()
 		mockStatusPatcher.EXPECT().
@@ -165,7 +165,7 @@ func TestAuthRegistrationReconciler_HandleReconcile(t *testing.T) {
 		registrationResult := newOIDCRegistrationResultForControllerTest()
 
 		mockServiceRegistrationBackend.EXPECT().
-			Upsert(mock.Anything, matchRegistration(domain.FromAuthRegistration(authRegistration))).
+			Upsert(mock.Anything, matchRegistration(domain.FromAuthRegistration(authRegistration)), mock.Anything).
 			Return(registrationResult, nil).
 			Once()
 		mockStatusPatcher.EXPECT().
@@ -214,7 +214,7 @@ func TestAuthRegistrationReconciler_HandleReconcile(t *testing.T) {
 		registrationResult := newOIDCRegistrationResultForControllerTest()
 
 		mockServiceRegistrationBackend.EXPECT().
-			Upsert(mock.Anything, matchRegistration(domain.FromAuthRegistration(authRegistration))).
+			Upsert(mock.Anything, matchRegistration(domain.FromAuthRegistration(authRegistration)), mock.Anything).
 			Return(registrationResult, nil).
 			Once()
 		mockStatusPatcher.EXPECT().
@@ -246,7 +246,7 @@ func TestAuthRegistrationReconciler_HandleReconcile(t *testing.T) {
 		upsertErr := errors.New("backend unavailable")
 
 		mockServiceRegistrationBackend.EXPECT().
-			Upsert(mock.Anything, matchRegistration(domain.FromAuthRegistration(authRegistration))).
+			Upsert(mock.Anything, matchRegistration(domain.FromAuthRegistration(authRegistration)), mock.Anything).
 			Return(domain.RegistrationResult{}, upsertErr).
 			Once()
 		mockStatusPatcher.EXPECT().
@@ -271,7 +271,7 @@ func TestAuthRegistrationReconciler_HandleReconcile(t *testing.T) {
 		patchErr := errors.New("status patch failed")
 
 		mockServiceRegistrationBackend.EXPECT().
-			Upsert(mock.Anything, matchRegistration(domain.FromAuthRegistration(authRegistration))).
+			Upsert(mock.Anything, matchRegistration(domain.FromAuthRegistration(authRegistration)), mock.Anything).
 			Return(domain.RegistrationResult{}, upsertErr).
 			Once()
 		mockStatusPatcher.EXPECT().
@@ -294,12 +294,6 @@ func TestAuthRegistrationReconciler_HandleReconcile(t *testing.T) {
 		reconciler, _ := newAuthRegistrationControllerReconcilerForTest(t, nil, mockServiceRegistrationBackend, mockStatusPatcher, mockSecretReconciler)
 		authRegistration := newAuthRegistrationForControllerTest("ecosystem", "auth-reg")
 		authRegistration.Spec.SecretRef = stringPtrForControllerTest("   ")
-		registrationResult := newOIDCRegistrationResultForControllerTest()
-
-		mockServiceRegistrationBackend.EXPECT().
-			Upsert(mock.Anything, matchRegistration(domain.FromAuthRegistration(authRegistration))).
-			Return(registrationResult, nil).
-			Once()
 		mockStatusPatcher.EXPECT().
 			PatchInvalidSpec(mock.Anything, authRegistration, mock.MatchedBy(func(err error) bool {
 				return err != nil && strings.Contains(err.Error(), "spec.secretRef must not be empty")
@@ -321,12 +315,6 @@ func TestAuthRegistrationReconciler_HandleReconcile(t *testing.T) {
 		reconciler, _ := newAuthRegistrationControllerReconcilerForTest(t, nil, mockServiceRegistrationBackend, mockStatusPatcher, mockSecretReconciler)
 		authRegistration := newAuthRegistrationForControllerTest("ecosystem", "auth-reg")
 		authRegistration.Spec.SecretRef = stringPtrForControllerTest("  ")
-		registrationResult := newOIDCRegistrationResultForControllerTest()
-
-		mockServiceRegistrationBackend.EXPECT().
-			Upsert(mock.Anything, matchRegistration(domain.FromAuthRegistration(authRegistration))).
-			Return(registrationResult, nil).
-			Once()
 		mockStatusPatcher.EXPECT().
 			PatchInvalidSpec(mock.Anything, authRegistration, mock.Anything).
 			Return(errors.New("status patch failed")).
@@ -349,7 +337,7 @@ func TestAuthRegistrationReconciler_HandleReconcile(t *testing.T) {
 		registrationResult := newOIDCRegistrationResultForControllerTest()
 
 		mockServiceRegistrationBackend.EXPECT().
-			Upsert(mock.Anything, matchRegistration(domain.FromAuthRegistration(authRegistration))).
+			Upsert(mock.Anything, matchRegistration(domain.FromAuthRegistration(authRegistration)), mock.Anything).
 			Return(registrationResult, nil).
 			Once()
 		mockStatusPatcher.EXPECT().
@@ -374,7 +362,7 @@ func TestAuthRegistrationReconciler_HandleReconcile(t *testing.T) {
 		secretErr := errors.New("secret reconcile failed")
 
 		mockServiceRegistrationBackend.EXPECT().
-			Upsert(mock.Anything, matchRegistration(domain.FromAuthRegistration(authRegistration))).
+			Upsert(mock.Anything, matchRegistration(domain.FromAuthRegistration(authRegistration)), mock.Anything).
 			Return(registrationResult, nil).
 			Once()
 		mockStatusPatcher.EXPECT().
@@ -412,7 +400,7 @@ func TestAuthRegistrationReconciler_HandleReconcile(t *testing.T) {
 		secretErr := errors.New("secret reconcile failed")
 
 		mockServiceRegistrationBackend.EXPECT().
-			Upsert(mock.Anything, matchRegistration(domain.FromAuthRegistration(authRegistration))).
+			Upsert(mock.Anything, matchRegistration(domain.FromAuthRegistration(authRegistration)), mock.Anything).
 			Return(registrationResult, nil).
 			Once()
 		mockStatusPatcher.EXPECT().
@@ -450,7 +438,7 @@ func TestAuthRegistrationReconciler_HandleReconcile(t *testing.T) {
 		registrationResult := newOIDCRegistrationResultForControllerTest()
 
 		mockServiceRegistrationBackend.EXPECT().
-			Upsert(mock.Anything, matchRegistration(domain.FromAuthRegistration(authRegistration))).
+			Upsert(mock.Anything, matchRegistration(domain.FromAuthRegistration(authRegistration)), mock.Anything).
 			Return(registrationResult, nil).
 			Once()
 		mockStatusPatcher.EXPECT().
@@ -482,7 +470,7 @@ func TestAuthRegistrationReconciler_HandleReconcile(t *testing.T) {
 		registrationResult := newOIDCRegistrationResultForControllerTest()
 
 		mockServiceRegistrationBackend.EXPECT().
-			Upsert(mock.Anything, matchRegistration(domain.FromAuthRegistration(authRegistration))).
+			Upsert(mock.Anything, matchRegistration(domain.FromAuthRegistration(authRegistration)), mock.Anything).
 			Return(registrationResult, nil).
 			Once()
 		mockStatusPatcher.EXPECT().

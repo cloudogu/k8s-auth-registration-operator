@@ -97,8 +97,8 @@ func buildDesiredSecret(result domain.RegistrationResult, authRegistration *auth
 		Data: map[string][]byte{},
 	}
 
-	// add secret data from registration-result
-	maps.Copy(secret.Data, result.GetSecretData())
+	// add registration data from registration-result
+	maps.Copy(secret.Data, result.GetRegistrationData())
 
 	return secret
 }

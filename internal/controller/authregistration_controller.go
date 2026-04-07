@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	authregistrationv1 "github.com/cloudogu/k8s-auth-registration-lib/api/v1"
 	"github.com/cloudogu/k8s-auth-registration-operator/internal/domain"
@@ -11,8 +12,10 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -38,7 +41,7 @@ type statusPatcher interface {
 }
 
 type serviceRegistrationBackend interface {
-	Upsert(ctx context.Context, registration domain.Registration) (domain.RegistrationResult, error)
+	Upsert(ctx context.Context, registration domain.Registration, existingData domain.RegistrationData) (domain.RegistrationResult, error)
 	Delete(ctx context.Context, registration domain.Registration) error
 }
 
@@ -101,6 +104,11 @@ func (c *AuthRegistrationController) Reconcile(ctx context.Context, req ctrl.Req
 
 // SetupWithManager sets up the controller with the Manager.
 func (c *AuthRegistrationController) SetupWithManager(mgr ctrl.Manager) error {
+	rateLimiter := workqueue.NewTypedItemExponentialFailureRateLimiter[ctrl.Request](
+		1*time.Second,
+		2*time.Minute,
+	)
+
 	if err := mgr.GetFieldIndexer().IndexField(
 		context.Background(),
 		&authregistrationv1.AuthRegistration{},
@@ -112,6 +120,7 @@ func (c *AuthRegistrationController) SetupWithManager(mgr ctrl.Manager) error {
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&authregistrationv1.AuthRegistration{}).
+		WithOptions(controller.Options{RateLimiter: rateLimiter}).
 		Watches(&corev1.Secret{}, handler.EnqueueRequestsFromMapFunc(c.mapSecretToAuthRegistrations)).
 		Named("authregistration").
 		Complete(c)
