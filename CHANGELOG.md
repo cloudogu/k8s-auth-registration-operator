@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Rename generated K8s resources to match the Helm release
    - if ldap-mapper is installed by an umbrella chart like `lop-idp` the deployed resources will receive a name like `lop-idp-ldap-mapper` instead of only `ldap-mapper`
+- Update go libraries to newer patch versions
 
 ### Removed
 - Remove excessive blank trimming from Helm template YAML files

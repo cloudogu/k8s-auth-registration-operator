@@ -7,11 +7,11 @@ require (
 	github.com/cloudogu/k8s-registry-lib v1.0.0
 	github.com/go-logr/logr v1.4.3
 	github.com/stretchr/testify v1.11.1
-	go.uber.org/zap v1.27.0
-	k8s.io/api v0.35.2
-	k8s.io/apimachinery v0.35.2
-	k8s.io/client-go v0.35.2
-	sigs.k8s.io/controller-runtime v0.23.1
+	go.uber.org/zap v1.27.1
+	k8s.io/api v0.35.3
+	k8s.io/apimachinery v0.35.3
+	k8s.io/client-go v0.35.3
+	sigs.k8s.io/controller-runtime v0.23.3
 )
 
 require (
