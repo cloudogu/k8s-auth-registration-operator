@@ -20,6 +20,8 @@ import (
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
+	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
 
 func TestResolveSecretName(t *testing.T) {
@@ -88,6 +90,56 @@ func TestIndexAuthRegistrationBySecretName(t *testing.T) {
 		indexValues := indexAuthRegistrationBySecretName(&corev1.Secret{})
 
 		assert.Nil(t, indexValues)
+	})
+}
+
+func TestAuthRegistrationPredicates(t *testing.T) {
+	p := predicate.Or(
+		predicate.GenerationChangedPredicate{},
+		predicate.AnnotationChangedPredicate{},
+		predicate.LabelChangedPredicate{},
+		deletionTimestampChangedPredicate{},
+	)
+
+	t.Run("allows spec updates via generation change", func(t *testing.T) {
+		oldObj := newAuthRegistrationForControllerTest("ecosystem", "auth-reg")
+		newObj := oldObj.DeepCopy()
+		newObj.Generation = oldObj.Generation + 1
+
+		assert.True(t, p.Update(event.UpdateEvent{ObjectOld: oldObj, ObjectNew: newObj}))
+	})
+
+	t.Run("filters status-only updates", func(t *testing.T) {
+		oldObj := newAuthRegistrationForControllerTest("ecosystem", "auth-reg")
+		newObj := oldObj.DeepCopy()
+		newObj.Status.ResolvedSecretRef = "updated-by-status-patch"
+
+		assert.False(t, p.Update(event.UpdateEvent{ObjectOld: oldObj, ObjectNew: newObj}))
+	})
+
+	t.Run("allows annotation-only updates", func(t *testing.T) {
+		oldObj := newAuthRegistrationForControllerTest("ecosystem", "auth-reg")
+		newObj := oldObj.DeepCopy()
+		newObj.Annotations = map[string]string{"reconcile-now": "true"}
+
+		assert.True(t, p.Update(event.UpdateEvent{ObjectOld: oldObj, ObjectNew: newObj}))
+	})
+
+	t.Run("allows label-only updates", func(t *testing.T) {
+		oldObj := newAuthRegistrationForControllerTest("ecosystem", "auth-reg")
+		newObj := oldObj.DeepCopy()
+		newObj.Labels = map[string]string{"reconcile-now": "true"}
+
+		assert.True(t, p.Update(event.UpdateEvent{ObjectOld: oldObj, ObjectNew: newObj}))
+	})
+
+	t.Run("allows deletion timestamp updates", func(t *testing.T) {
+		oldObj := newAuthRegistrationForControllerTest("ecosystem", "auth-reg")
+		newObj := oldObj.DeepCopy()
+		now := metav1.NewTime(time.Now())
+		newObj.DeletionTimestamp = &now
+
+		assert.True(t, p.Update(event.UpdateEvent{ObjectOld: oldObj, ObjectNew: newObj}))
 	})
 }
 
