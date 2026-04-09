@@ -7,6 +7,13 @@ Kubernetes 1.4+.
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
+{{- define "k8s-auth-registration-operator.fullname" -}}
+{{- if .Values.fullnameOverride -}}
+{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" -}}
+{{- else -}}
+{{- printf "%s-%s" .Release.Name (include "k8s-auth-registration-operator.name" .) | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+{{- end -}}
 
 {{/* All-in-one labels */}}
 {{- define "k8s-auth-registration-operator.labels" -}}
