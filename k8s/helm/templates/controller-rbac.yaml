@@ -2,7 +2,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   labels:
-    {{- include "k8s-auth-registration-operator.labels" . | nindent 4 }}
+    {{ include "k8s-auth-registration-operator.labels" . | nindent 4 }}
   name: {{ include "k8s-auth-registration-operator.fullname" . }}-controller-role
 rules:
   - apiGroups:
@@ -62,7 +62,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   labels:
-    {{- include "k8s-auth-registration-operator.labels" . | nindent 4 }}
+    {{ include "k8s-auth-registration-operator.labels" . | nindent 4 }}
   name: {{ include "k8s-auth-registration-operator.fullname" . }}-controller-rolebinding
 roleRef:
   apiGroup: rbac.authorization.k8s.io
