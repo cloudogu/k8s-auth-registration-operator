@@ -5,7 +5,7 @@
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: {{ include "k8s-auth-registration-operator.name" . }}-deny-all
+  name: {{ include "k8s-auth-registration-operator.fullname" . }}-deny-all
   labels:
     {{- include "k8s-auth-registration-operator.labels" . | nindent 4 }}
 spec:
