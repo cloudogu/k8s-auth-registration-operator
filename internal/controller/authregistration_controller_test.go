@@ -9,6 +9,7 @@ import (
 
 	authregistrationv1 "github.com/cloudogu/k8s-auth-registration-lib/api/v1"
 	"github.com/cloudogu/k8s-auth-registration-operator/internal/domain"
+	"github.com/go-logr/logr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -20,6 +21,9 @@ import (
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
+	"sigs.k8s.io/controller-runtime/pkg/config"
+	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
 
 func TestResolveSecretName(t *testing.T) {
@@ -88,6 +92,56 @@ func TestIndexAuthRegistrationBySecretName(t *testing.T) {
 		indexValues := indexAuthRegistrationBySecretName(&corev1.Secret{})
 
 		assert.Nil(t, indexValues)
+	})
+}
+
+func TestAuthRegistrationPredicates(t *testing.T) {
+	p := predicate.Or(
+		predicate.GenerationChangedPredicate{},
+		predicate.AnnotationChangedPredicate{},
+		predicate.LabelChangedPredicate{},
+		deletionTimestampChangedPredicate{},
+	)
+
+	t.Run("allows spec updates via generation change", func(t *testing.T) {
+		oldObj := newAuthRegistrationForControllerTest("ecosystem", "auth-reg")
+		newObj := oldObj.DeepCopy()
+		newObj.Generation = oldObj.Generation + 1
+
+		assert.True(t, p.Update(event.UpdateEvent{ObjectOld: oldObj, ObjectNew: newObj}))
+	})
+
+	t.Run("filters status-only updates", func(t *testing.T) {
+		oldObj := newAuthRegistrationForControllerTest("ecosystem", "auth-reg")
+		newObj := oldObj.DeepCopy()
+		newObj.Status.ResolvedSecretRef = "updated-by-status-patch"
+
+		assert.False(t, p.Update(event.UpdateEvent{ObjectOld: oldObj, ObjectNew: newObj}))
+	})
+
+	t.Run("allows annotation-only updates", func(t *testing.T) {
+		oldObj := newAuthRegistrationForControllerTest("ecosystem", "auth-reg")
+		newObj := oldObj.DeepCopy()
+		newObj.Annotations = map[string]string{"reconcile-now": "true"}
+
+		assert.True(t, p.Update(event.UpdateEvent{ObjectOld: oldObj, ObjectNew: newObj}))
+	})
+
+	t.Run("allows label-only updates", func(t *testing.T) {
+		oldObj := newAuthRegistrationForControllerTest("ecosystem", "auth-reg")
+		newObj := oldObj.DeepCopy()
+		newObj.Labels = map[string]string{"reconcile-now": "true"}
+
+		assert.True(t, p.Update(event.UpdateEvent{ObjectOld: oldObj, ObjectNew: newObj}))
+	})
+
+	t.Run("allows deletion timestamp updates", func(t *testing.T) {
+		oldObj := newAuthRegistrationForControllerTest("ecosystem", "auth-reg")
+		newObj := oldObj.DeepCopy()
+		now := metav1.NewTime(time.Now())
+		newObj.DeletionTimestamp = &now
+
+		assert.True(t, p.Update(event.UpdateEvent{ObjectOld: oldObj, ObjectNew: newObj}))
 	})
 }
 
@@ -522,4 +576,70 @@ func newGeneratedSecretForControllerTest(authRegistration *authregistrationv1.Au
 
 func boolPtrForControllerTest(value bool) *bool {
 	return &value
+}
+
+func TestAuthRegistrationController_SetupWithManager(t *testing.T) {
+	t.Run("should fail field indexer creation at controller instantiation", func(t *testing.T) {
+		// given
+		scheme := newAuthRegistrationControllerSchemeForTest(t)
+		client := fake.NewClientBuilder().WithScheme(scheme).Build()
+		mockServiceRegistrationBackend := newMockServiceRegistrationBackend(t)
+		indexerMock := newMockFieldIndexer(t)
+		indexerMock.On("IndexField", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(assert.AnError)
+		mgrMock := newMockManager(t)
+		mgrMock.EXPECT().GetFieldIndexer().Return(indexerMock)
+
+		sut := NewAuthRegistrationController(client, scheme, mockServiceRegistrationBackend)
+
+		// when
+		err := sut.SetupWithManager(mgrMock)
+
+		// then
+		require.Error(t, err)
+		assert.ErrorIs(t, err, assert.AnError)
+		assert.ErrorContains(t, err, "failed to index AuthRegistration by secret reference")
+	})
+	t.Run("should fail at internal errors at controller instantiation", func(t *testing.T) {
+		// given
+		scheme := newAuthRegistrationControllerSchemeForTest(t)
+		client := fake.NewClientBuilder().WithScheme(scheme).Build()
+		mockServiceRegistrationBackend := newMockServiceRegistrationBackend(t)
+		indexerMock := newMockFieldIndexer(t)
+		indexerMock.On("IndexField", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		mgrMock := newMockManager(t)
+		mgrMock.EXPECT().GetFieldIndexer().Return(indexerMock)
+		mgrMock.EXPECT().GetControllerOptions().Return(config.Controller{})
+		mgrMock.EXPECT().GetScheme().Return(scheme)
+		mgrMock.EXPECT().GetLogger().Return(logr.Logger{})
+		mgrMock.EXPECT().Add(mock.Anything).Return(assert.AnError)
+
+		sut := NewAuthRegistrationController(client, scheme, mockServiceRegistrationBackend)
+
+		// when
+		err := sut.SetupWithManager(mgrMock)
+
+		// then
+		require.Error(t, err)
+		assert.ErrorIs(t, err, assert.AnError)
+	})
+}
+
+type mockFieldIndexer struct {
+	mock.Mock
+}
+
+func newMockFieldIndexer(t *testing.T) *mockFieldIndexer {
+	t.Helper()
+
+	aMock := &mockFieldIndexer{}
+	t.Cleanup(func() {
+		aMock.AssertExpectations(t)
+	})
+
+	return aMock
+}
+
+func (m *mockFieldIndexer) IndexField(ctx context.Context, obj ctrlclient.Object, field string, extractValue ctrlclient.IndexerFunc) error {
+	args := m.Called(ctx, obj, field, extractValue)
+	return args.Error(0)
 }

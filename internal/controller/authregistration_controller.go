@@ -14,11 +14,14 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	mgr "sigs.k8s.io/controller-runtime/pkg/manager"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
@@ -55,6 +58,11 @@ type authRegistrationReconciler interface {
 type AuthRegistrationController struct {
 	client.Client
 	reconciler authRegistrationReconciler
+}
+
+// manager is a test-only interface
+type manager interface {
+	mgr.Manager
 }
 
 func NewAuthRegistrationController(rtClient client.Client, scheme *runtime.Scheme, backend serviceRegistrationBackend) *AuthRegistrationController {
@@ -103,13 +111,13 @@ func (c *AuthRegistrationController) Reconcile(ctx context.Context, req ctrl.Req
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (c *AuthRegistrationController) SetupWithManager(mgr ctrl.Manager) error {
+func (c *AuthRegistrationController) SetupWithManager(theMgr manager) error {
 	rateLimiter := workqueue.NewTypedItemExponentialFailureRateLimiter[ctrl.Request](
 		1*time.Second,
 		2*time.Minute,
 	)
 
-	if err := mgr.GetFieldIndexer().IndexField(
+	if err := theMgr.GetFieldIndexer().IndexField(
 		context.Background(),
 		&authregistrationv1.AuthRegistration{},
 		authRegistrationSecretRefField,
@@ -118,8 +126,20 @@ func (c *AuthRegistrationController) SetupWithManager(mgr ctrl.Manager) error {
 		return fmt.Errorf("failed to index AuthRegistration by secret reference: %w", err)
 	}
 
-	return ctrl.NewControllerManagedBy(mgr).
-		For(&authregistrationv1.AuthRegistration{}).
+	return ctrl.NewControllerManagedBy(theMgr).
+		For(
+			&authregistrationv1.AuthRegistration{},
+			// Ignore status-only updates so failed reconciles keep the configured error backoff,
+			// while still reacting to desired-state and deletion-related metadata changes.
+			builder.WithPredicates(
+				predicate.Or(
+					predicate.GenerationChangedPredicate{},
+					predicate.AnnotationChangedPredicate{},
+					predicate.LabelChangedPredicate{},
+					deletionTimestampChangedPredicate{},
+				),
+			),
+		).
 		WithOptions(controller.Options{RateLimiter: rateLimiter}).
 		Watches(&corev1.Secret{}, handler.EnqueueRequestsFromMapFunc(c.mapSecretToAuthRegistrations)).
 		Named("authregistration").

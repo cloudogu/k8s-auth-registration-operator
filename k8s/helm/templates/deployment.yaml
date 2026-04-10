@@ -3,25 +3,25 @@ kind: Deployment
 metadata:
   labels:
     control-plane: controller-manager
-  {{- include "k8s-auth-registration-operator.labels" . | nindent 4 }}
-  name: {{ include "k8s-auth-registration-operator.name" . }}
+  {{ include "k8s-auth-registration-operator.labels" . | nindent 4 }}
+  name: {{ include "k8s-auth-registration-operator.fullname" . }}
 spec:
   replicas: {{ .Values.manager.replicas | default 1 }}
   selector:
     matchLabels:
       control-plane: controller-manager
-    {{- include "k8s-auth-registration-operator.selectorLabels" . | nindent 6 }}
+    {{ include "k8s-auth-registration-operator.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       annotations:
         kubectl.kubernetes.io/default-container: manager
       labels:
         control-plane: controller-manager
-      {{- include "k8s-auth-registration-operator.labels" . | nindent 8 }}
+      {{ include "k8s-auth-registration-operator.labels" . | nindent 8 }}
     spec:
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:
-        {{- toYaml . | nindent 8 }}
+        {{ toYaml . | nindent 8 }}
         {{- end }}
       containers:
         - args:
@@ -72,10 +72,8 @@ spec:
             initialDelaySeconds: 5
             periodSeconds: 10
           resources:
-            limits: {{- toYaml .Values.manager.resourceLimits | nindent
-            14 }}
-            requests: {{- toYaml .Values.manager.resourceRequests | nindent
-            14 }}
+            limits: {{ toYaml .Values.manager.resourceLimits | nindent 14 }}
+            requests: {{ toYaml .Values.manager.resourceRequests | nindent 14 }}
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -86,5 +84,5 @@ spec:
         runAsNonRoot: true
         seccompProfile:
           type: RuntimeDefault
-      serviceAccountName: {{ include "k8s-auth-registration-operator.name" . }}
+      serviceAccountName: {{ include "k8s-auth-registration-operator.fullname" . }}
       terminationGracePeriodSeconds: 10
