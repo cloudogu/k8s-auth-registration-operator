@@ -20,6 +20,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	mgr "sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
@@ -57,6 +58,11 @@ type authRegistrationReconciler interface {
 type AuthRegistrationController struct {
 	client.Client
 	reconciler authRegistrationReconciler
+}
+
+// manager is a test-only interface
+type manager interface {
+	mgr.Manager
 }
 
 func NewAuthRegistrationController(rtClient client.Client, scheme *runtime.Scheme, backend serviceRegistrationBackend) *AuthRegistrationController {
@@ -105,7 +111,7 @@ func (c *AuthRegistrationController) Reconcile(ctx context.Context, req ctrl.Req
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (c *AuthRegistrationController) SetupWithManager(mgr ctrl.Manager) error {
+func (c *AuthRegistrationController) SetupWithManager(mgr manager) error {
 	rateLimiter := workqueue.NewTypedItemExponentialFailureRateLimiter[ctrl.Request](
 		1*time.Second,
 		2*time.Minute,

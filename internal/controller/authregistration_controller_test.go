@@ -575,3 +575,46 @@ func newGeneratedSecretForControllerTest(authRegistration *authregistrationv1.Au
 func boolPtrForControllerTest(value bool) *bool {
 	return &value
 }
+
+func TestAuthRegistrationController_SetupWithManager(t *testing.T) {
+	t.Run("should fail at controller instantiation", func(t *testing.T) {
+		// given
+		scheme := newAuthRegistrationControllerSchemeForTest(t)
+		client := fake.NewClientBuilder().WithScheme(scheme).Build()
+		mockServiceRegistrationBackend := newMockServiceRegistrationBackend(t)
+		indexerMock := newMockFieldIndexer(t)
+		indexerMock.On("IndexField", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(assert.AnError)
+		mgrMock := newMockManager(t)
+		mgrMock.EXPECT().GetFieldIndexer().Return(indexerMock)
+
+		sut := NewAuthRegistrationController(client, scheme, mockServiceRegistrationBackend)
+
+		// when
+		err := sut.SetupWithManager(mgrMock)
+
+		// then
+		require.Error(t, err)
+		assert.ErrorIs(t, err, assert.AnError)
+		assert.ErrorContains(t, err, "failed to index AuthRegistration by secret reference")
+	})
+}
+
+type mockFieldIndexer struct {
+	mock.Mock
+}
+
+func newMockFieldIndexer(t *testing.T) *mockFieldIndexer {
+	t.Helper()
+
+	aMock := &mockFieldIndexer{}
+	t.Cleanup(func() {
+		aMock.AssertExpectations(t)
+	})
+
+	return aMock
+}
+
+func (m *mockFieldIndexer) IndexField(ctx context.Context, obj ctrlclient.Object, field string, extractValue ctrlclient.IndexerFunc) error {
+	args := m.Called(ctx, obj, field, extractValue)
+	return args.Error(0)
+}
