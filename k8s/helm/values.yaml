@@ -12,7 +12,7 @@ manager:
     logLevel: info
     stage: production
   cas:
-    baseUrl: "http://lop-idp-cas:8080/cas/"
+    baseUrl: "http://cas:8080/cas/"
     timeout: 10s
     authSecret:
       name: "lop-idp-cas-actuator-auth"
