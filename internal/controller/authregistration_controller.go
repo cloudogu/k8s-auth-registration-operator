@@ -111,13 +111,13 @@ func (c *AuthRegistrationController) Reconcile(ctx context.Context, req ctrl.Req
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (c *AuthRegistrationController) SetupWithManager(mgr manager) error {
+func (c *AuthRegistrationController) SetupWithManager(theMgr manager) error {
 	rateLimiter := workqueue.NewTypedItemExponentialFailureRateLimiter[ctrl.Request](
 		1*time.Second,
 		2*time.Minute,
 	)
 
-	if err := mgr.GetFieldIndexer().IndexField(
+	if err := theMgr.GetFieldIndexer().IndexField(
 		context.Background(),
 		&authregistrationv1.AuthRegistration{},
 		authRegistrationSecretRefField,
@@ -126,7 +126,7 @@ func (c *AuthRegistrationController) SetupWithManager(mgr manager) error {
 		return fmt.Errorf("failed to index AuthRegistration by secret reference: %w", err)
 	}
 
-	return ctrl.NewControllerManagedBy(mgr).
+	return ctrl.NewControllerManagedBy(theMgr).
 		For(
 			&authregistrationv1.AuthRegistration{},
 			// Ignore status-only updates so failed reconciles keep the configured error backoff,
