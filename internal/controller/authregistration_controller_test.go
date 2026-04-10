@@ -9,6 +9,7 @@ import (
 
 	authregistrationv1 "github.com/cloudogu/k8s-auth-registration-lib/api/v1"
 	"github.com/cloudogu/k8s-auth-registration-operator/internal/domain"
+	"github.com/go-logr/logr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -20,6 +21,7 @@ import (
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
+	"sigs.k8s.io/controller-runtime/pkg/config"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
@@ -577,7 +579,7 @@ func boolPtrForControllerTest(value bool) *bool {
 }
 
 func TestAuthRegistrationController_SetupWithManager(t *testing.T) {
-	t.Run("should fail at controller instantiation", func(t *testing.T) {
+	t.Run("should fail field indexer creation at controller instantiation", func(t *testing.T) {
 		// given
 		scheme := newAuthRegistrationControllerSchemeForTest(t)
 		client := fake.NewClientBuilder().WithScheme(scheme).Build()
@@ -596,6 +598,29 @@ func TestAuthRegistrationController_SetupWithManager(t *testing.T) {
 		require.Error(t, err)
 		assert.ErrorIs(t, err, assert.AnError)
 		assert.ErrorContains(t, err, "failed to index AuthRegistration by secret reference")
+	})
+	t.Run("should fail at internal errors at controller instantiation", func(t *testing.T) {
+		// given
+		scheme := newAuthRegistrationControllerSchemeForTest(t)
+		client := fake.NewClientBuilder().WithScheme(scheme).Build()
+		mockServiceRegistrationBackend := newMockServiceRegistrationBackend(t)
+		indexerMock := newMockFieldIndexer(t)
+		indexerMock.On("IndexField", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		mgrMock := newMockManager(t)
+		mgrMock.EXPECT().GetFieldIndexer().Return(indexerMock)
+		mgrMock.EXPECT().GetControllerOptions().Return(config.Controller{})
+		mgrMock.EXPECT().GetScheme().Return(scheme)
+		mgrMock.EXPECT().GetLogger().Return(logr.Logger{})
+		mgrMock.EXPECT().Add(mock.Anything).Return(assert.AnError)
+
+		sut := NewAuthRegistrationController(client, scheme, mockServiceRegistrationBackend)
+
+		// when
+		err := sut.SetupWithManager(mgrMock)
+
+		// then
+		require.Error(t, err)
+		assert.ErrorIs(t, err, assert.AnError)
 	})
 }
 
