@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v1.1.1] - 2026-05-12
+### Fixed
+- [#6] Allow optional ports in generated CAS registered service ID patterns.
+
 ## [v1.1.0] - 2026-04-10
 ### Changed
 - [#5] Rename generated K8s resources to match the Helm release
