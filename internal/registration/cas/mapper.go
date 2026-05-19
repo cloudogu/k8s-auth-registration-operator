@@ -180,7 +180,7 @@ func logoutURLForRegistration(reg domain.Registration, fqdn string) string {
 }
 
 func registrationServiceID(fqdn string, serviceName string) string {
-	return fmt.Sprintf("^https://%s(:[0-9]+)?/%s(/.*)?$", escapeDots(fqdn), serviceName)
+	return fmt.Sprintf("^https://((?i)%s)(:443)?/%s(/.*)?", escapeDots(fqdn), serviceName)
 }
 
 func resolveClientID(reg domain.Registration, existing *RegisteredService) string {
