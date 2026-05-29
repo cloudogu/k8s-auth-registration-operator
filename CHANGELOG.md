@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v1.1.2] - 2026-05-29
+### Fixed
+- [#8] Align service-registration-regex with the pattern from JSON-service-registry
+
 ## [v1.1.1] - 2026-05-12
 ### Fixed
 - [#6] Allow optional ports in generated CAS registered service ID patterns.

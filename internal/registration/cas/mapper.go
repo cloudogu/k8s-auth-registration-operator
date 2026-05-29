@@ -180,7 +180,11 @@ func logoutURLForRegistration(reg domain.Registration, fqdn string) string {
 }
 
 func registrationServiceID(fqdn string, serviceName string) string {
-	return fmt.Sprintf("^https://%s(:[0-9]+)?/%s(/.*)?$", escapeDots(fqdn), serviceName)
+	// this regexp must identical to CAS' JSON service registration regexp in the corresponding BaseService.json
+	// see also https://apereo.github.io/cas/7.3.x/services/JSON-Service-Management.html
+	const ignoreCaseAndOptionalHttpsPortCasRegistrationRegexp = "^https://((?i)%s)(:443)?/%s(/.*)?"
+	
+	return fmt.Sprintf(ignoreCaseAndOptionalHttpsPortCasRegistrationRegexp, escapeDots(fqdn), serviceName)
 }
 
 func resolveClientID(reg domain.Registration, existing *RegisteredService) string {
