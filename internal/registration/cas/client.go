@@ -97,6 +97,9 @@ func (c *Client) DeleteService(ctx context.Context, id int64) error {
 		return err
 	}
 
+	// Since CAS 7.3 needs a content-type "application/json" for delete; otherwise the request is rejected with 415.
+	req.Header.Set("Content-Type", "application/json")
+
 	_, err = c.do(req, http.StatusOK, http.StatusNoContent, http.StatusNotFound)
 	if err != nil {
 		var apiErr *apiError

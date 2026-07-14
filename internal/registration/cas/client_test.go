@@ -127,6 +127,23 @@ func TestClientDeleteTreatsNotFoundAsSuccess(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestClientDeleteServiceSendsJSONContentType(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodDelete, r.Method)
+		assert.Equal(t, "/actuator/registeredServices/77", r.URL.Path)
+		// CAS >= 7.3 rejects delete requests without a matching Content-Type with 415.
+		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	client := newClientForHTTPServerTest(t, server)
+
+	err := client.DeleteService(context.Background(), 77)
+
+	require.NoError(t, err)
+}
+
 func TestClientListServicesSupportsObjectPayload(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "application/json", r.Header.Get("Accept"))
