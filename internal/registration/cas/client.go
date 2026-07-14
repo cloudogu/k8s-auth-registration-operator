@@ -14,6 +14,7 @@ import (
 )
 
 const registeredServicesPath = "/actuator/registeredServices"
+const contentTypeJSON = "application/json"
 
 var defaultClientTimeout = 10 * time.Second
 
@@ -97,6 +98,9 @@ func (c *Client) DeleteService(ctx context.Context, id int64) error {
 		return err
 	}
 
+	// Since CAS 7.3 needs a content-type "application/json" for delete; otherwise the request is rejected with 415.
+	req.Header.Set("Content-Type", contentTypeJSON)
+
 	_, err = c.do(req, http.StatusOK, http.StatusNoContent, http.StatusNotFound)
 	if err != nil {
 		var apiErr *apiError
@@ -119,7 +123,7 @@ func (c *Client) writeService(ctx context.Context, method string, service Regist
 	if err != nil {
 		return RegisteredService{}, err
 	}
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Type", contentTypeJSON)
 
 	body, err := c.do(req, http.StatusOK, http.StatusCreated)
 	if err != nil {
@@ -140,7 +144,7 @@ func (c *Client) writeService(ctx context.Context, method string, service Regist
 
 func (c *Client) do(req *http.Request, expectedStatusCodes ...int) ([]byte, error) {
 	req.SetBasicAuth(c.cfg.Username, c.cfg.Password)
-	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Accept", contentTypeJSON)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

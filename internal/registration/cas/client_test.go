@@ -20,7 +20,7 @@ func TestClientListServicesSupportsCASCollectionPayload(t *testing.T) {
 		require.True(t, ok)
 		assert.Equal(t, "cas-user", username)
 		assert.Equal(t, "cas-password", password)
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Type", contentTypeJSON)
 		_, _ = w.Write([]byte(`["java.util.ArrayList",[{"id":42,"name":"app","serviceId":"^https://app.example.com"}]]`))
 	}))
 	defer server.Close()
@@ -127,10 +127,27 @@ func TestClientDeleteTreatsNotFoundAsSuccess(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestClientDeleteServiceSendsJSONContentType(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodDelete, r.Method)
+		assert.Equal(t, "/actuator/registeredServices/77", r.URL.Path)
+		// CAS >= 7.3 rejects delete requests without a matching Content-Type with 415.
+		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	client := newClientForHTTPServerTest(t, server)
+
+	err := client.DeleteService(context.Background(), 77)
+
+	require.NoError(t, err)
+}
+
 func TestClientListServicesSupportsObjectPayload(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "application/json", r.Header.Get("Accept"))
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Type", contentTypeJSON)
 		_, _ = w.Write([]byte(`{"services":[{"id":21,"name":"app","serviceId":"^https://app.example.com"}]}`))
 	}))
 	defer server.Close()
@@ -180,7 +197,7 @@ func TestClientCreateService(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			assert.Equal(t, http.MethodPost, r.Method)
 			assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
-			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Content-Type", contentTypeJSON)
 			_, _ = w.Write([]byte(`{"id":11,"name":"created","serviceId":"^https://created.example.com"}`))
 		}))
 		defer server.Close()
