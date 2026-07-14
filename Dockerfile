@@ -26,7 +26,7 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -mod=mod
 FROM gcr.io/distroless/static:nonroot
 LABEL maintainer="hello@cloudogu.com" \
       NAME="k8s-auth-registration-operator" \
-      VERSION="1.1.2"
+      VERSION="1.1.3"
 
 WORKDIR /
 COPY --from=builder /workspace/k8s-auth-registration-operator .
