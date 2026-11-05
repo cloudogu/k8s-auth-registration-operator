@@ -1,6 +1,6 @@
 module github.com/cloudogu/k8s-auth-registration-operator
 
-go 1.26.0
+go 1.27.3
 
 require (
 	github.com/cloudogu/k8s-auth-registration-lib v0.1.1

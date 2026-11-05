@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- [#13] Update Go to 1.27.3 to fix various CVEs.
+
+### Changed
+- Update Makefile version to 11.2.0 and remove the LINT_VERSION in Makefile to use the latest version v2.15.0 provided in makefiles
+
 ## [v1.1.3] - 2026-07-14
 ### Fixed
 - [#11] Send `Content-Type: application/json` on CAS delete requests
