@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v1.1.4] - 2026-11-06
+
 ### Security
 - [#13] Update Go to 1.27.3 to fix various CVEs.
 
