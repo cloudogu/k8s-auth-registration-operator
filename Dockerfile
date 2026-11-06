@@ -1,5 +1,5 @@
 # Build the manager binary
-FROM golang:1.26.0 AS builder
+FROM golang:1.27.3 AS builder
 ARG TARGETOS
 ARG TARGETARCH
 
@@ -26,7 +26,7 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -mod=mod
 FROM gcr.io/distroless/static:nonroot
 LABEL maintainer="hello@cloudogu.com" \
       NAME="k8s-auth-registration-operator" \
-      VERSION="1.1.3"
+      VERSION="1.1.4"
 
 WORKDIR /
 COPY --from=builder /workspace/k8s-auth-registration-operator .

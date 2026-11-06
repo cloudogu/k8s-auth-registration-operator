@@ -1,10 +1,10 @@
 # Set these to the desired values
 ARTIFACT_ID=k8s-auth-registration-operator
-VERSION=1.1.3
+VERSION=1.1.4
 IMAGE=cloudogu/${ARTIFACT_ID}:${VERSION}
-GOTAG=1.26.0
-MAKEFILES_VERSION=10.10.0
-LINT_VERSION?=v2.9.0
+GOTAG=1.27.3
+MAKEFILES_VERSION=11.2.0
+LINT_VERSION=v2.15.0
 
 STAGE?=production
 
